@@ -51,7 +51,7 @@ class Gloop:
 
         if self.running:
             self.world.tick()
-        self.setcenterbyworldpos(self.world.player_head.position)   
+        self.setcenterbyworldpos(self.world.player.eyepos)   
         self.world.draw(self.screen,self.world2screen,self.pixpu)
 
         # flip() the display to put your work on screen
@@ -77,8 +77,9 @@ class Level:
             def EndContact(self, contact):
                 pass
             def PreSolve(self, contact, oldManifold):
-                if {contact.fixtureA,contact.fixtureB}==playerparts:
-                    contact.enabled = False
+                if contact.fixtureA.userData is not None and contact.fixtureA.userData is not None:
+                    if contact.fixtureA.userData.get("role",None) is contact.fixtureB.userData.get("role",...):
+                        contact.enabled = False
                 if contact.fixtureA.userData is not None and contact.fixtureA.userData.get("oneway"):
                     if contact.fixtureB.GetAABB(0).lowerBound[1]<contact.fixtureA.GetAABB(0).upperBound[1]:
                         contact.enabled = False
@@ -89,13 +90,14 @@ class Level:
                 pass
                 
         self.world = b2World(gravity=(0, -10),contactListener=myContactListener())
+        self.world.NPCs=[]
         self.ground=self.world.CreateBody()
         map="""
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~J
                              J
                             J
 ###                  L###  J  
-###^  J#L           #    ##
+###&  J#L    ^      #    ##
 #####~   ###########
         """
         for i,line in enumerate(map.splitlines()):
@@ -103,7 +105,9 @@ class Level:
                 if c == "#":
                     self.place_a_normal_block(self.world,j,-i)
                 elif c == "^":
-                    playerXinit,playerYinit=j,-i
+                    self.player=NormalMob(self.world,j,-i)
+                elif c == "&":
+                    self.player=NPC(self.world,j,-i)
                 elif c == "J":
                     self.place_a_J_block(self.world,j,-i)
                 elif c == "L":
@@ -111,30 +115,7 @@ class Level:
                 elif c == "~":
                     self.place_a_oneway_block(self.world,j,-i)
         
-        self.player_foot=player_foot=self.world.CreateDynamicBody(
-            fixtures=b2FixtureDef(friction=10,
-                shape=b2CircleShape(radius=0.5),
-                density=1.0),
-            bullet=False,
-            position=(0.5+playerXinit, 0.5+playerYinit))
-        self.player_head=player_head=self.world.CreateDynamicBody(
-            fixedRotation = True,
-            fixtures=b2FixtureDef(friction=0,
-                shape=b2PolygonShape(box=[0.5,1.5/2]),
-                density=1.0),
-            bullet=False,
-            position=(0.5+playerXinit, 1.5+playerYinit))
-        playerparts={player_foot.fixtures[0],player_head.fixtures[0]}
-        self.playerJointPlan=b2WheelJointDef(
-            bodyB=player_head,
-            bodyA=player_foot,
-            localAnchorB=(0,-1.5/2),
-            localAnchorA=(0, 0),
-            enableMotor=True,
-            motorSpeed=0,
-            maxMotorTorque=10000,
-            )
-        self.playermoving=None
+        
         
         self.pressed = {pygame.K_w:False,pygame.K_s:False,pygame.K_a:False,pygame.K_d:False}
 
@@ -160,19 +141,24 @@ class Level:
         )
     def tick(self):
         if self.pressed[pygame.K_w]:
-            self.playerJointPlan.localAnchorB=(0,-1)
-            self.playerJointPlan.frequencyHz=50
-            self.playermoving = self.world.CreateJoint(self.playerJointPlan)
+            self.player.jump()
         else:
-            
-            self.playerJointPlan.localAnchorB=(0,-1.5/2)
-            self.playerJointPlan.frequencyHz=3
-            self.playerJointPlan.dampingRatio=0.7
-            self.playermoving = self.world.CreateJoint(self.playerJointPlan)
-        self.playermoving.localAnchorB=(34,56)
-        self.playermoving.motorSpeed=3*(self.pressed[pygame.K_d]-self.pressed[pygame.K_a])
+            self.player.unjump()
+        _npcs=[]
+        for i in self.world.NPCs:
+            if i.died:
+                continue
+            i.tick()
+            _npcs.append(i)
+        self.world.NPCs[:]=_npcs
+        #self.playermoving.localAnchorB=(34,56)
+        self.player.walk(3*(self.pressed[pygame.K_d]-self.pressed[pygame.K_a]))
         self.world.Step(1/60,10,10)
-        self.world.DestroyJoint(self.playermoving)
+        self.player.clean()
+        for i in self.world.NPCs:
+            if i.died:
+                continue
+            i.clean()
         
             #self.player_foot.ApplyLinearImpulse((0,0.5),self.player_head.position,True)
             
@@ -198,7 +184,69 @@ class Level:
     def onkeyup(self,key):
         self.pressed[key]=False
 
-        
+class NormalMob:
+    def attack(self):
+        pass
+    def beharmed(self):
+        pass
+    def bekilled(self):
+        pass
+    def remove(self):
+        pass
+    def __init__(self,world,playerXinit,playerYinit) -> None:
+        self.world=world
+        self.player_foot=player_foot=self.world.CreateDynamicBody(
+            fixtures=b2FixtureDef(userData={"role":self},friction=10,
+                shape=b2CircleShape(radius=0.5),
+                density=1.0),
+            bullet=False,
+            position=(0.5+playerXinit, 0.5+playerYinit))
+        self.player_head=player_head=self.world.CreateDynamicBody(
+            fixedRotation = True,
+            fixtures=b2FixtureDef(userData={"role":self},friction=0,
+                shape=b2PolygonShape(box=[0.5,1.5/2]),
+                density=1.0),
+            bullet=False,
+            position=(0.5+playerXinit, 1.5+playerYinit))
+        self.playerJointPlan=b2WheelJointDef(
+            bodyB=player_head,
+            bodyA=player_foot,
+            localAnchorB=(0,-1.5/2),
+            localAnchorA=(0, 0),
+            enableMotor=True,
+            motorSpeed=0,
+            maxMotorTorque=10000,
+            )
+        self.playermoving=None
+    def jump(self):
+        self.playerJointPlan.localAnchorB=(0,-1)
+        self.playerJointPlan.frequencyHz=50
+        self.playermoving = self.world.CreateJoint(self.playerJointPlan)
+    def unjump(self):  
+        self.playerJointPlan.localAnchorB=(0,-1.5/2)
+        self.playerJointPlan.frequencyHz=3
+        self.playerJointPlan.dampingRatio=0.7
+        self.playermoving = self.world.CreateJoint(self.playerJointPlan)
+    def clean(self):
+        self.world.DestroyJoint(self.playermoving)
+    def walk(self,speed):
+        self.playermoving.motorSpeed=speed
+    @property
+    def eyepos(self):
+        return self.player_head.position
 
+class NPC(NormalMob):
+    def __init__(self, world, playerXinit, playerYinit) -> None:
+        super().__init__(world, playerXinit, playerYinit)
+        
+        world.NPCs.append(self)
+    died=0
+    counter=0
+    def tick(self):
+        self.counter+=1
+        if self.counter%60:
+            self.unjump()
+        else:
+            self.jump()
 Gloop().start()
 
