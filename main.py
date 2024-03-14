@@ -1,8 +1,10 @@
 
 from Box2D import *
 import pygame
-
+from math import floor
+from collections import defaultdict
 class Gloop:
+    
     # pygame setup
     def __init__(self) -> None:
         pygame.init()
@@ -14,10 +16,20 @@ class Gloop:
         self.centerY=0
         self.pixpu=50
         self.mouseISdown=False
+        
+        self.mapscreencache=defaultdict(lambda:pygame.Surface((5*self.pixpu,5*self.pixpu)))
+        self.rezoom()
+    def rezoom(self):
+        self.mapscreencache.clear()
+        self.Images=[pygame.transform.scale(pygame.image.load('0.png'),(self.pixpu,self.pixpu))
+        ,pygame.transform.scale(pygame.image.load('0_.png'),(self.pixpu,self.pixpu))
+        ,pygame.transform.scale(pygame.image.load('1.png'),(self.pixpu,self.pixpu))
+        ,pygame.transform.scale(pygame.image.load('2.png'),(self.pixpu,self.pixpu))
+        ,pygame.transform.scale(pygame.image.load('3.png'),(self.pixpu,self.pixpu))]
     def world2screen(self,x,y):
         return (
-        (x-self.centerX)*self.pixpu+self.screen.get_width()/2,
-        (self.centerY-y)*self.pixpu+self.screen.get_height()/2
+        floor((x-self.centerX)*self.pixpu+self.screen.get_width()/2),
+        floor((self.centerY-y)*self.pixpu+self.screen.get_height()/2)
         )
     def screen2world(self,x,y):
         return (
@@ -37,6 +49,12 @@ class Gloop:
             elif event.type == pygame.KEYUP:
                 if event.key==pygame.K_ESCAPE:
                     self.running = not self.running
+                elif event.key==pygame.K_EQUALS:
+                    self.pixpu+=1
+                    self.rezoom()
+                elif event.key==pygame.K_MINUS:
+                    self.pixpu=max(1,self.pixpu-1)
+                    self.rezoom()
                 else:
                     self.world.onkeyup(event.key)
             elif event.type == pygame.MOUSEBUTTONUP:
@@ -91,14 +109,19 @@ class Level:
                 
         self.world = b2World(gravity=(0, -10),contactListener=myContactListener())
         self.world.NPCs=[]
-        self.ground=self.world.CreateBody()
+        self.world.normalBlocks={}
+        self.world.JBlocks={}
+        self.world.LBlocks={}
+        self.world.onewayBlocks={}
+        #self.ground=self.world.CreateBody()
         map="""
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~J
-                             J
-                            J
-###                  L###  J  
-###&  J#L    ^      #    ##
-#####~   ###########
+                                       J
+        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~J
+                                     J
+                                    J
+        ###                  L###  J  
+        ###&  J#L    ^      #    ##
+        #####~   ###########
         """
         for i,line in enumerate(map.splitlines()):
             for j,c in enumerate(line):
@@ -121,22 +144,22 @@ class Level:
 
     @staticmethod
     def place_a_normal_block(world,x,y):
-        world.CreateStaticBody(angle=0,
+        world.normalBlocks[(x,y)]=world.CreateStaticBody(angle=0,
             fixtures=b2FixtureDef(friction=10,shape=b2LoopShape(vertices=[(x, y), (1+x,y),(1+x, 1+y),(x, 1+y)]),userData={"color":[50,100,20]})
         )
     @staticmethod
     def place_a_J_block(world,x,y):
-        world.CreateStaticBody(angle=0,
+        world.JBlocks[(x,y)]=world.CreateStaticBody(angle=0,
             fixtures=b2FixtureDef(friction=10,shape=b2LoopShape(vertices=[(x, y), (1+x,y),(1+x, 1+y)]),userData={"color":[50,100,20]})
         )
     @staticmethod
     def place_a_L_block(world,x,y):
-        world.CreateStaticBody(angle=0,
+        world.LBlocks[(x,y)]=world.CreateStaticBody(angle=0,
             fixtures=b2FixtureDef(friction=10,shape=b2LoopShape(vertices=[(x, y), (1+x,y),(x, 1+y)]),userData={"color":[50,100,20]})
         )
     @staticmethod
     def place_a_oneway_block(world,x,y):
-        world.CreateStaticBody(angle=0,
+        world.onewayBlocks[(x,y)]=world.CreateStaticBody(angle=0,
             fixtures=b2FixtureDef(friction=10,shape=b2LoopShape(vertices=[(x, y+0.5), (1+x,y+0.5),(1+x, 1+y),(x, 1+y)]),userData={"color":[50,100,20],"oneway":True})
         )
     def tick(self):
@@ -166,6 +189,16 @@ class Level:
         
             
     def draw(self,surface,zoom_func,zoom):
+        if not self.gloop.mapscreencache:
+            pass
+            # for x,y in self.world.normalBlocks:
+            #     surface.blit(self.gloop.Images[not(hash(x*0.3+0.01*y+0.1)%10)],zoom_func(x,y+1))
+            # for x,y in self.world.LBlocks:
+            #     surface.blit(self.gloop.Images[2],zoom_func(x,y+1))
+            # for x,y in self.world.JBlocks:
+            #     surface.blit(self.gloop.Images[3],zoom_func(x,y+1))
+            # for x,y in self.world.onewayBlocks:
+            #     surface.blit(self.gloop.Images[4],zoom_func(x,y+1))
         for body in self.world.bodies:
             trans=body.transform
             for fixture in body.fixtures:
@@ -175,7 +208,17 @@ class Level:
                     pygame.draw.circle(surface, fixture.userData.setdefault("color",[255,255,255]),zoom_func(*(trans*fixture.shape.pos)), zoom*fixture.shape.radius)
                 else:
                     pygame.draw.polygon(surface,fixture.userData.setdefault("color",[100,100,100]),[zoom_func(*trans*v) for v in fixture.shape.vertices])
+
+        for x,y in self.world.normalBlocks:
+            surface.blit(self.gloop.Images[not(hash(x*0.3+0.01*y+0.1)%10)],zoom_func(x,y+1))
+        for x,y in self.world.LBlocks:
+            surface.blit(self.gloop.Images[2],zoom_func(x,y+1))
+        for x,y in self.world.JBlocks:
+            surface.blit(self.gloop.Images[3],zoom_func(x,y+1))
+        for x,y in self.world.onewayBlocks:
+            surface.blit(self.gloop.Images[4],zoom_func(x,y+1))
             
+                    
         
 
 
