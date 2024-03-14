@@ -3,6 +3,7 @@ from Box2D import *
 import pygame
 from math import floor
 from collections import defaultdict
+CACHE_SIZE=7
 class Gloop:
     
     # pygame setup
@@ -17,7 +18,7 @@ class Gloop:
         self.pixpu=50
         self.mouseISdown=False
         
-        self.mapscreencache=defaultdict(lambda:pygame.Surface((5*self.pixpu,5*self.pixpu)))
+        self.mapscreencache=defaultdict(lambda:pygame.Surface((CACHE_SIZE*self.pixpu,CACHE_SIZE*self.pixpu),flags=pygame.SRCALPHA ))
         self.rezoom()
     def rezoom(self):
         self.mapscreencache.clear()
@@ -115,8 +116,8 @@ class Level:
         self.world.onewayBlocks={}
         #self.ground=self.world.CreateBody()
         map="""
-                                       J
-        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~J
+        ~~~~~~~~~~~~                   J
+                    ~~~~~~~~~~~~~~~~~~J
                                      J
                                     J
         ###                  L###  J  
@@ -190,15 +191,22 @@ class Level:
             
     def draw(self,surface,zoom_func,zoom):
         if not self.gloop.mapscreencache:
-            pass
-            # for x,y in self.world.normalBlocks:
-            #     surface.blit(self.gloop.Images[not(hash(x*0.3+0.01*y+0.1)%10)],zoom_func(x,y+1))
-            # for x,y in self.world.LBlocks:
-            #     surface.blit(self.gloop.Images[2],zoom_func(x,y+1))
-            # for x,y in self.world.JBlocks:
-            #     surface.blit(self.gloop.Images[3],zoom_func(x,y+1))
-            # for x,y in self.world.onewayBlocks:
-            #     surface.blit(self.gloop.Images[4],zoom_func(x,y+1))
+            for x,y in self.world.normalBlocks:
+                X,x=divmod(x,CACHE_SIZE)
+                Y,y=divmod(y,CACHE_SIZE)
+                self.gloop.mapscreencache[(X,Y)].blit(self.gloop.Images[not(hash(x*0.3+0.01*y+0.1)%7)],(zoom*x,zoom*(CACHE_SIZE-1-y)))
+            for x,y in self.world.LBlocks:
+                X,x=divmod(x,CACHE_SIZE)
+                Y,y=divmod(y,CACHE_SIZE)
+                self.gloop.mapscreencache[(X,Y)].blit(self.gloop.Images[2],(zoom*x,zoom*(CACHE_SIZE-1-y)))
+            for x,y in self.world.JBlocks:
+                X,x=divmod(x,CACHE_SIZE)
+                Y,y=divmod(y,CACHE_SIZE)
+                self.gloop.mapscreencache[(X,Y)].blit(self.gloop.Images[3],(zoom*x,zoom*(CACHE_SIZE-1-y)))
+            for x,y in self.world.onewayBlocks:
+                X,x=divmod(x,CACHE_SIZE)
+                Y,y=divmod(y,CACHE_SIZE)
+                self.gloop.mapscreencache[(X,Y)].blit(self.gloop.Images[4],(zoom*x,zoom*(CACHE_SIZE-1-y)))
         for body in self.world.bodies:
             trans=body.transform
             for fixture in body.fixtures:
@@ -208,15 +216,16 @@ class Level:
                     pygame.draw.circle(surface, fixture.userData.setdefault("color",[255,255,255]),zoom_func(*(trans*fixture.shape.pos)), zoom*fixture.shape.radius)
                 else:
                     pygame.draw.polygon(surface,fixture.userData.setdefault("color",[100,100,100]),[zoom_func(*trans*v) for v in fixture.shape.vertices])
-
-        for x,y in self.world.normalBlocks:
-            surface.blit(self.gloop.Images[not(hash(x*0.3+0.01*y+0.1)%10)],zoom_func(x,y+1))
-        for x,y in self.world.LBlocks:
-            surface.blit(self.gloop.Images[2],zoom_func(x,y+1))
-        for x,y in self.world.JBlocks:
-            surface.blit(self.gloop.Images[3],zoom_func(x,y+1))
-        for x,y in self.world.onewayBlocks:
-            surface.blit(self.gloop.Images[4],zoom_func(x,y+1))
+        
+        surface.blits((s,zoom_func(x*CACHE_SIZE,y*CACHE_SIZE+CACHE_SIZE)) for (x,y),s in self.gloop.mapscreencache.items())
+        # for x,y in self.world.normalBlocks:
+        #     surface.blit(self.gloop.Images[not(hash(x*0.3+0.01*y+0.1)%10)],zoom_func(x,y+1))
+        # for x,y in self.world.LBlocks:
+        #     surface.blit(self.gloop.Images[2],zoom_func(x,y+1))
+        # for x,y in self.world.JBlocks:
+        #     surface.blit(self.gloop.Images[3],zoom_func(x,y+1))
+        # for x,y in self.world.onewayBlocks:
+        #     surface.blit(self.gloop.Images[4],zoom_func(x,y+1))
             
                     
         
