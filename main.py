@@ -4,6 +4,7 @@ import pygame
 from math import floor
 from collections import defaultdict
 from contextlib import contextmanager,ExitStack
+from functools import lru_cache
 CACHE_SIZE=7
 class Gloop:
     
@@ -27,7 +28,13 @@ class Gloop:
         ,pygame.transform.scale(pygame.image.load('0_.png'),(self.pixpu,self.pixpu))
         ,pygame.transform.scale(pygame.image.load('1.png'),(self.pixpu,self.pixpu))
         ,pygame.transform.scale(pygame.image.load('2.png'),(self.pixpu,self.pixpu))
-        ,pygame.transform.scale(pygame.image.load('3.png'),(self.pixpu,self.pixpu))]
+        ,pygame.transform.scale(pygame.image.load('3.png'),(self.pixpu,self.pixpu))
+        ,pygame.transform.scale(pygame.image.load('playerbody.png'),(self.pixpu,self.pixpu*2))
+        ,pygame.transform.scale(pygame.image.load('playerfoot1.png'),(self.pixpu,self.pixpu*2))
+        ,pygame.transform.scale(pygame.image.load('playerfoot2.png'),(self.pixpu,self.pixpu*2))
+        ,pygame.transform.scale(pygame.image.load('playerhand1.png'),(self.pixpu,self.pixpu*2))
+        ]
+        self.flipImages=lru_cache(8)(lambda N:pygame.transform.flip(self.Images[N],1,0))
     def world2screen(self,x,y):
         return (
         floor((x-self.centerX)*self.pixpu+self.screen.get_width()/2),
@@ -110,6 +117,7 @@ class Level:
                 pass
                 
         self.world = b2World(gravity=(0, -10),contactListener=myContactListener())
+        self.world.world=self
         self.world.NPCs=[]
         self.world.normalBlocks={}
         self.world.JBlocks={}
@@ -204,16 +212,20 @@ class Level:
                 X,x=divmod(x,CACHE_SIZE)
                 Y,y=divmod(y,CACHE_SIZE)
                 self.gloop.mapscreencache[(X,Y)].blit(self.gloop.Images[4],(zoom*x,zoom*(CACHE_SIZE-1-y)))
-        for body in self.world.bodies:
-            trans=body.transform
-            for fixture in body.fixtures:
-                if fixture.userData is None:
-                    fixture.userData={}
-                if isinstance( fixture.shape,b2CircleShape):
-                    pygame.draw.circle(surface, fixture.userData.setdefault("color",[255,255,255]),zoom_func(*(trans*fixture.shape.pos)), zoom*fixture.shape.radius)
-                else:
-                    pygame.draw.polygon(surface,fixture.userData.setdefault("color",[100,100,100]),[zoom_func(*trans*v) for v in fixture.shape.vertices])
-        
+        if 0:
+            for body in self.world.bodies:
+                trans=body.transform
+                for fixture in body.fixtures:
+                    if fixture.userData is None:
+                        fixture.userData={}
+                    if isinstance( fixture.shape,b2CircleShape):
+                        pygame.draw.circle(surface, fixture.userData.setdefault("color",[255,255,255]),zoom_func(*(trans*fixture.shape.pos)), zoom*fixture.shape.radius)
+                    else:
+                        pygame.draw.polygon(surface,fixture.userData.setdefault("color",[100,100,100]),[zoom_func(*trans*v) for v in fixture.shape.vertices])
+            
+        for npc in self.world.NPCs:
+            npc.draw(surface,zoom_func,zoom)
+        self.world.world.player.draw(surface,zoom_func,zoom)
         surface.blits((s,zoom_func(x*CACHE_SIZE,y*CACHE_SIZE+CACHE_SIZE)) for (x,y),s in self.gloop.mapscreencache.items())
         # for x,y in self.world.normalBlocks:
         #     surface.blit(self.gloop.Images[not(hash(x*0.3+0.01*y+0.1)%10)],zoom_func(x,y+1))
@@ -234,6 +246,7 @@ class Level:
         self.pressed[key]=False
 
 class NormalMob:
+    facing=1  #1 or -1
     def attack(self):
         pass
     def beharmed(self):
@@ -268,6 +281,7 @@ class NormalMob:
             )
         self.playermoving=None
     def jump(self):
+        self.player_foot.angle=-40*self.facing
         self.playerJointPlan.localAnchorB=(0,-1)
         self.playerJointPlan.frequencyHz=50
         self.playermoving = self.world.CreateJoint(self.playerJointPlan)
@@ -279,10 +293,27 @@ class NormalMob:
     def clean(self):
         self.world.DestroyJoint(self.playermoving)
     def walk(self,speed):
+        if speed > 0:
+            self.facing=1
+        if speed < 0:
+            self.facing=-1
         self.playermoving.motorSpeed=speed
     @property
     def eyepos(self):
         return self.player_head.position
+    def draw(self,surface,zoom_func,zoom):
+        X=self.player_head.fixtures[0].GetAABB(0).lowerBound[0]
+        Y=self.player_head.fixtures[0].GetAABB(0).upperBound[1]
+        x=self.player_foot.fixtures[0].GetAABB(0).lowerBound[0]
+        y=self.player_foot.fixtures[0].GetAABB(0).upperBound[1]
+        if self.facing==1:
+            surface.blit(self.world.world.gloop.Images[6+floor(self.player_foot.angle)%2],zoom_func(x,y+1) )
+            surface.blit(self.world.world.gloop.Images[5],zoom_func(X,Y) )
+            surface.blit(self.world.world.gloop.Images[8],zoom_func(x,Y) )
+        else:
+            surface.blit(self.world.world.gloop.flipImages(6+floor(self.player_foot.angle)%2),zoom_func(x,y+1) )
+            surface.blit(self.world.world.gloop.flipImages(5),zoom_func(X,Y) )
+            surface.blit(self.world.world.gloop.flipImages(8),zoom_func(x,Y) )
 class Player(NormalMob):
     wannajump=False
     @contextmanager
