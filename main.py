@@ -22,12 +22,13 @@ class Gloop:
         self.centerY=0
         self.pixpu=50
         self.mouseISdown=False
+        self.backroundColor="skyblue"
         
         self.mapscreencache=defaultdict(lambda:pygame.Surface((CACHE_SIZE*self.pixpu,CACHE_SIZE*self.pixpu),flags=pygame.SRCALPHA ))
         self.rezoom()
     def rezoom(self):
         self.mapscreencache.clear()
-        self.Images=[pygame.transform.scale(pygame.image.load('0.png'),(self.pixpu,self.pixpu))
+        self.Images=(pygame.transform.scale(pygame.image.load('0.png'),(self.pixpu,self.pixpu))
         ,pygame.transform.scale(pygame.image.load('0_.png'),(self.pixpu,self.pixpu))
         ,pygame.transform.scale(pygame.image.load('1.png'),(self.pixpu,self.pixpu))
         ,pygame.transform.scale(pygame.image.load('2.png'),(self.pixpu,self.pixpu))
@@ -36,7 +37,7 @@ class Gloop:
         ,pygame.transform.scale(pygame.image.load('playerfoot1.png'),(self.pixpu,self.pixpu*2))
         ,pygame.transform.scale(pygame.image.load('playerfoot2.png'),(self.pixpu,self.pixpu*2))
         ,pygame.transform.scale(pygame.image.load('playerhand1.png'),(self.pixpu,self.pixpu*2))
-        ]
+        )
         self.flipImages=lru_cache(8)(lambda N:pygame.transform.flip(self.Images[N],1,0))
     def world2screen(self,x,y):
         return (
@@ -77,12 +78,14 @@ class Gloop:
         
             
         # fill the screen with a color to wipe away anything from last frame
-        self.screen.fill("purple")
+        self.screen.fill(self.backroundColor)
 
         if self.running:
             self.world.tick()
         self.setcenterbyworldpos(self.world.player.eyepos)   
         self.world.draw(self.screen,self.world2screen,self.pixpu)
+        if not self.running:
+            self.screen.fill((56,56,56),None,pygame.BLEND_RGBA_MULT)
 
         # flip() the display to put your work on screen
         pygame.display.flip()
@@ -143,7 +146,7 @@ class Level:
                     ~~~~~~~~~~~~~~~~~~J
                                      J
                                     J
-        ###                  L###  J  
+        ###                  J###  J  
         ###&  J#L    ^      #    ##
         #####~   ###########
         """
@@ -169,22 +172,22 @@ class Level:
     @staticmethod
     def place_a_normal_block(world,x,y):
         world.normalBlocks[(x,y)]=world.CreateStaticBody(angle=0,
-            fixtures=b2FixtureDef(friction=10,shape=b2LoopShape(vertices=[(x, y), (1+x,y),(1+x, 1+y),(x, 1+y)]),userData={"color":[50,100,20],"role":"ground"})
+            fixtures=b2FixtureDef(friction=10,shape=b2LoopShape(vertices=((x, y), (1+x,y),(1+x, 1+y),(x, 1+y))),userData={"role":"ground"})
         )
     @staticmethod
     def place_a_J_block(world,x,y):
         world.JBlocks[(x,y)]=world.CreateStaticBody(angle=0,
-            fixtures=b2FixtureDef(friction=10,shape=b2LoopShape(vertices=[(x, y), (1+x,y),(1+x, 1+y)]),userData={"color":[50,100,20],"role":"ground"})
+            fixtures=b2FixtureDef(friction=10,shape=b2LoopShape(vertices=((x, y), (1+x,y),(1+x, 1+y))),userData={"role":"ground"})
         )
     @staticmethod
     def place_a_L_block(world,x,y):
         world.LBlocks[(x,y)]=world.CreateStaticBody(angle=0,
-            fixtures=b2FixtureDef(friction=10,shape=b2LoopShape(vertices=[(x, y), (1+x,y),(x, 1+y)]),userData={"color":[50,100,20],"role":"ground"})
+            fixtures=b2FixtureDef(friction=10,shape=b2LoopShape(vertices=((x, y), (1+x,y),(x, 1+y))),userData={"role":"ground"})
         )
     @staticmethod
     def place_a_oneway_block(world,x,y):
         world.onewayBlocks[(x,y)]=world.CreateStaticBody(angle=0,
-            fixtures=b2FixtureDef(friction=10,shape=b2LoopShape(vertices=[(x, y+0.5), (1+x,y+0.5),(1+x, 1+y),(x, 1+y)]),userData={"color":[50,100,20],"oneway":True,"role":"ground"})
+            fixtures=b2FixtureDef(friction=10,shape=b2LoopShape(vertices=((x, y+0.5), (1+x,y+0.5),(1+x, 1+y),(x, 1+y))),userData={"oneway":True,"role":"ground"})
         )
     def tick(self):
         with ExitStack() as Entityticks:
@@ -263,6 +266,8 @@ class Level:
 class NormalMob:
     wannadown=False
     wannajump=False
+    uppersize=(0.5,1.5/2)
+    buttomsize=0.5
     facing=1  #1 or -1
     def attack(self):
         pass
@@ -276,14 +281,14 @@ class NormalMob:
         self.world=world
         self.player_foot=player_foot=self.world.CreateDynamicBody(
             fixtures=b2FixtureDef(userData={"role":self,"half":"down"},friction=10,
-                shape=b2CircleShape(radius=0.5),
+                shape=b2CircleShape(radius=self.buttomsize),
                 density=1.0),
             bullet=False,
             position=(0.5+playerXinit, 0.5+playerYinit))
         self.player_head=player_head=self.world.CreateDynamicBody(
             fixedRotation = True,
             fixtures=b2FixtureDef(userData={"role":self,"half":"up"},friction=0,
-                shape=b2PolygonShape(box=[0.5,1.5/2]),
+                shape=b2PolygonShape(box=self.uppersize),
                 density=1.0),
             bullet=False,
             position=(0.5+playerXinit, 1.5+playerYinit))
@@ -347,9 +352,11 @@ class NPC(NormalMob):
     def tick(self):
         self.counter+=1
         if self.counter%60:
-            yield self.unjump()
+            self.unjump()
+            yield self.walk(6*((self.counter//100)%2-0.5))
         else:
             yield self.jump()
         self.clean()
+class Slime(NPC):pass
 Gloop().start()
 
