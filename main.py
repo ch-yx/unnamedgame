@@ -5,6 +5,9 @@ from math import floor
 from collections import defaultdict
 from contextlib import contextmanager,ExitStack
 from functools import lru_cache
+def debugprint(x):
+    print(x)
+    return x
 CACHE_SIZE=7
 class Gloop:
     
@@ -107,12 +110,23 @@ class Level:
                 if contact.fixtureA.userData is not None and contact.fixtureA.userData is not None:
                     if contact.fixtureA.userData.get("role",None) is contact.fixtureB.userData.get("role",...):
                         contact.enabled = False
+                        return
                 if contact.fixtureA.userData is not None and contact.fixtureA.userData.get("oneway"):
+                    if contact.fixtureB.userData is not None and isinstance(thatplayer:=contact.fixtureB.userData.get("role"),NormalMob) and (thatplayer.wannadown or 
+                                                                                                                                              ("up" == contact.fixtureB.userData["half"])):
+                        contact.enabled = False
+                        return
                     if contact.fixtureB.GetAABB(0).lowerBound[1]<contact.fixtureA.GetAABB(0).upperBound[1]:
                         contact.enabled = False
+                        return
                 if contact.fixtureB.userData is not None and contact.fixtureB.userData.get("oneway"):
+                    if contact.fixtureA.userData is not None and isinstance(thatplayer:=contact.fixtureA.userData.get("role"),NormalMob) and (thatplayer.wannadown or 
+                                                                                                                                              ("up" == contact.fixtureA.userData["half"])):
+                        contact.enabled = False
+                        return
                     if contact.fixtureA.GetAABB(0).lowerBound[1]<contact.fixtureB.GetAABB(0).upperBound[1]:
                         contact.enabled = False
+                        return
             def PostSolve(self, contact, impulse):
                 pass
                 
@@ -155,26 +169,27 @@ class Level:
     @staticmethod
     def place_a_normal_block(world,x,y):
         world.normalBlocks[(x,y)]=world.CreateStaticBody(angle=0,
-            fixtures=b2FixtureDef(friction=10,shape=b2LoopShape(vertices=[(x, y), (1+x,y),(1+x, 1+y),(x, 1+y)]),userData={"color":[50,100,20]})
+            fixtures=b2FixtureDef(friction=10,shape=b2LoopShape(vertices=[(x, y), (1+x,y),(1+x, 1+y),(x, 1+y)]),userData={"color":[50,100,20],"role":"ground"})
         )
     @staticmethod
     def place_a_J_block(world,x,y):
         world.JBlocks[(x,y)]=world.CreateStaticBody(angle=0,
-            fixtures=b2FixtureDef(friction=10,shape=b2LoopShape(vertices=[(x, y), (1+x,y),(1+x, 1+y)]),userData={"color":[50,100,20]})
+            fixtures=b2FixtureDef(friction=10,shape=b2LoopShape(vertices=[(x, y), (1+x,y),(1+x, 1+y)]),userData={"color":[50,100,20],"role":"ground"})
         )
     @staticmethod
     def place_a_L_block(world,x,y):
         world.LBlocks[(x,y)]=world.CreateStaticBody(angle=0,
-            fixtures=b2FixtureDef(friction=10,shape=b2LoopShape(vertices=[(x, y), (1+x,y),(x, 1+y)]),userData={"color":[50,100,20]})
+            fixtures=b2FixtureDef(friction=10,shape=b2LoopShape(vertices=[(x, y), (1+x,y),(x, 1+y)]),userData={"color":[50,100,20],"role":"ground"})
         )
     @staticmethod
     def place_a_oneway_block(world,x,y):
         world.onewayBlocks[(x,y)]=world.CreateStaticBody(angle=0,
-            fixtures=b2FixtureDef(friction=10,shape=b2LoopShape(vertices=[(x, y+0.5), (1+x,y+0.5),(1+x, 1+y),(x, 1+y)]),userData={"color":[50,100,20],"oneway":True})
+            fixtures=b2FixtureDef(friction=10,shape=b2LoopShape(vertices=[(x, y+0.5), (1+x,y+0.5),(1+x, 1+y),(x, 1+y)]),userData={"color":[50,100,20],"oneway":True,"role":"ground"})
         )
     def tick(self):
         with ExitStack() as Entityticks:
             self.player.wannajump=self.pressed[pygame.K_w]
+            self.player.wannadown=self.pressed[pygame.K_s]
             Entityticks.enter_context(self.player.tick())
 
             _npcs=[]
@@ -246,6 +261,8 @@ class Level:
         self.pressed[key]=False
 
 class NormalMob:
+    wannadown=False
+    wannajump=False
     facing=1  #1 or -1
     def attack(self):
         pass
@@ -258,14 +275,14 @@ class NormalMob:
     def __init__(self,world,playerXinit,playerYinit) -> None:
         self.world=world
         self.player_foot=player_foot=self.world.CreateDynamicBody(
-            fixtures=b2FixtureDef(userData={"role":self},friction=10,
+            fixtures=b2FixtureDef(userData={"role":self,"half":"down"},friction=10,
                 shape=b2CircleShape(radius=0.5),
                 density=1.0),
             bullet=False,
             position=(0.5+playerXinit, 0.5+playerYinit))
         self.player_head=player_head=self.world.CreateDynamicBody(
             fixedRotation = True,
-            fixtures=b2FixtureDef(userData={"role":self},friction=0,
+            fixtures=b2FixtureDef(userData={"role":self,"half":"up"},friction=0,
                 shape=b2PolygonShape(box=[0.5,1.5/2]),
                 density=1.0),
             bullet=False,
@@ -307,15 +324,14 @@ class NormalMob:
         x=self.player_foot.fixtures[0].GetAABB(0).lowerBound[0]
         y=self.player_foot.fixtures[0].GetAABB(0).upperBound[1]
         if self.facing==1:
-            surface.blit(self.world.world.gloop.Images[6+floor(self.player_foot.angle)%2],zoom_func(x,y+1) )
+            surface.blit(self.world.world.gloop.Images[6+round(self.player_foot.angle)%2],zoom_func(x,y+1) )
             surface.blit(self.world.world.gloop.Images[5],zoom_func(X,Y) )
             surface.blit(self.world.world.gloop.Images[8],zoom_func(x,Y) )
         else:
-            surface.blit(self.world.world.gloop.flipImages(6+floor(self.player_foot.angle)%2),zoom_func(x,y+1) )
+            surface.blit(self.world.world.gloop.flipImages(6+round(self.player_foot.angle)%2),zoom_func(x,y+1) )
             surface.blit(self.world.world.gloop.flipImages(5),zoom_func(X,Y) )
             surface.blit(self.world.world.gloop.flipImages(8),zoom_func(x,Y) )
 class Player(NormalMob):
-    wannajump=False
     @contextmanager
     def tick(self):
         yield self.jump() if self.wannajump else self.unjump()
