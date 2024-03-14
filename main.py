@@ -3,6 +3,7 @@ from Box2D import *
 import pygame
 from math import floor
 from collections import defaultdict
+from contextlib import contextmanager,ExitStack
 CACHE_SIZE=7
 class Gloop:
     
@@ -129,7 +130,7 @@ class Level:
                 if c == "#":
                     self.place_a_normal_block(self.world,j,-i)
                 elif c == "^":
-                    self.player=NormalMob(self.world,j,-i)
+                    self.player=Player(self.world,j,-i)
                 elif c == "&":
                     self.player=NPC(self.world,j,-i)
                 elif c == "J":
@@ -164,25 +165,21 @@ class Level:
             fixtures=b2FixtureDef(friction=10,shape=b2LoopShape(vertices=[(x, y+0.5), (1+x,y+0.5),(1+x, 1+y),(x, 1+y)]),userData={"color":[50,100,20],"oneway":True})
         )
     def tick(self):
-        if self.pressed[pygame.K_w]:
-            self.player.jump()
-        else:
-            self.player.unjump()
-        _npcs=[]
-        for i in self.world.NPCs:
-            if i.died:
-                continue
-            i.tick()
-            _npcs.append(i)
-        self.world.NPCs[:]=_npcs
-        #self.playermoving.localAnchorB=(34,56)
-        self.player.walk(3*(self.pressed[pygame.K_d]-self.pressed[pygame.K_a]))
-        self.world.Step(1/60,10,10)
-        self.player.clean()
-        for i in self.world.NPCs:
-            if i.died:
-                continue
-            i.clean()
+        with ExitStack() as Entityticks:
+            self.player.wannajump=self.pressed[pygame.K_w]
+            Entityticks.enter_context(self.player.tick())
+
+            _npcs=[]
+            for i in self.world.NPCs:
+                if i.died:
+                    continue
+                Entityticks.enter_context(i.tick())
+                _npcs.append(i)
+            self.world.NPCs[:]=_npcs
+            #self.playermoving.localAnchorB=(34,56)
+            self.player.walk(3*(self.pressed[pygame.K_d]-self.pressed[pygame.K_a]))
+            self.world.Step(1/60,10,10)
+
         
             #self.player_foot.ApplyLinearImpulse((0,0.5),self.player_head.position,True)
             
@@ -286,7 +283,12 @@ class NormalMob:
     @property
     def eyepos(self):
         return self.player_head.position
-
+class Player(NormalMob):
+    wannajump=False
+    @contextmanager
+    def tick(self):
+        yield self.jump() if self.wannajump else self.unjump()
+        self.clean()
 class NPC(NormalMob):
     def __init__(self, world, playerXinit, playerYinit) -> None:
         super().__init__(world, playerXinit, playerYinit)
@@ -294,11 +296,13 @@ class NPC(NormalMob):
         world.NPCs.append(self)
     died=0
     counter=0
+    @contextmanager
     def tick(self):
         self.counter+=1
         if self.counter%60:
-            self.unjump()
+            yield self.unjump()
         else:
-            self.jump()
+            yield self.jump()
+        self.clean()
 Gloop().start()
 
