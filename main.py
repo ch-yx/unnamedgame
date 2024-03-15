@@ -147,7 +147,7 @@ class Level:
                                      J
                                     J
         ###                  J###  J  
-        ###&  J#L    ^      #    ##
+        ###&  J#L    ^  o   #    ##
         #####~   ###########
         """
         for i,line in enumerate(map.splitlines()):
@@ -156,8 +156,10 @@ class Level:
                     self.place_a_normal_block(self.world,j,-i)
                 elif c == "^":
                     self.player=Player(self.world,j,-i)
+                elif c == "o":
+                    Slime(self.world,j,-i)
                 elif c == "&":
-                    self.player=NPC(self.world,j,-i)
+                    NPC(self.world,j,-i)
                 elif c == "J":
                     self.place_a_J_block(self.world,j,-i)
                 elif c == "L":
@@ -267,7 +269,9 @@ class NormalMob:
     wannadown=False
     wannajump=False
     uppersize=(0.5,1.5/2)
+    upperdensity=1
     buttomsize=0.5
+    isSlime=False
     facing=1  #1 or -1
     def attack(self):
         pass
@@ -289,7 +293,7 @@ class NormalMob:
             fixedRotation = True,
             fixtures=b2FixtureDef(userData={"role":self,"half":"up"},friction=0,
                 shape=b2PolygonShape(box=self.uppersize),
-                density=1.0),
+                density=self.upperdensity,isSensor=self.isSlime),
             bullet=False,
             position=(0.5+playerXinit, 1.5+playerYinit))
         self.playerJointPlan=b2WheelJointDef(
@@ -353,10 +357,26 @@ class NPC(NormalMob):
         self.counter+=1
         if self.counter%60:
             self.unjump()
-            yield self.walk(6*((self.counter//100)%2-0.5))
+            self.walk(6*((self.counter//100)%2-0.5))
+            yield
         else:
             yield self.jump()
         self.clean()
-class Slime(NPC):pass
+class Slime(NPC):
+    isSlime=True
+    upperdensity=5000
+    uppersize=(0.01,0.01)
+    
+    @contextmanager
+    def tick(self):
+        self.counter+=1
+        if not self.counter%180:
+            self.facing*=-1
+        if self.counter%60:
+            self.unjump()
+            yield
+        else:
+            yield self.jump()
+        self.clean()
 Gloop().start()
 
