@@ -122,7 +122,7 @@ class Level:
                         contact.enabled = False
                         return
                 if contact.fixtureA.userData is not None and contact.fixtureA.userData.get("oneway"):
-                    if contact.fixtureB.userData is not None and isinstance(thatplayer:=contact.fixtureB.userData.get("role"),NormalMob) and (thatplayer.wannadown or 
+                    if contact.fixtureB.userData is not None and isinstance(thatplayer:=contact.fixtureB.userData.get("role"),Humanoid) and (thatplayer.wannadown or 
                                                                                                                                               ("up" == contact.fixtureB.userData["half"])):
                         contact.enabled = False
                         return
@@ -130,7 +130,7 @@ class Level:
                         contact.enabled = False
                         return
                 if contact.fixtureB.userData is not None and contact.fixtureB.userData.get("oneway"):
-                    if contact.fixtureA.userData is not None and isinstance(thatplayer:=contact.fixtureA.userData.get("role"),NormalMob) and (thatplayer.wannadown or 
+                    if contact.fixtureA.userData is not None and isinstance(thatplayer:=contact.fixtureA.userData.get("role"),Humanoid) and (thatplayer.wannadown or 
                                                                                                                                               ("up" == contact.fixtureA.userData["half"])):
                         contact.enabled = False
                         return
@@ -273,8 +273,25 @@ class Level:
         self.pressed[key]=True
     def onkeyup(self,key):
         self.pressed[key]=False
-
-class NormalMob:
+class Damageable:
+    def attack(self):
+        pass
+    def beharmed(self):
+        pass
+    def onkilled(self):
+        self.died=True
+    removed=False#already be removed
+    died=False#should be removed
+    def onremove(self):
+        if self.removed:return
+        self.removed=True
+        self.clean()
+    def clean():
+        pass
+    def draw():
+        pass
+        
+class Humanoid(Damageable):
     walkspeed=1
     wannadown=False
     wannajump=False
@@ -287,11 +304,17 @@ class NormalMob:
         pass
     def beharmed(self):
         pass
-    def bekilled(self):
-        pass
-    def remove(self):
-        pass
-    def __init__(self,world,playerXinit,playerYinit) -> None:
+    
+    def onremove(self):
+        if self.removed:return
+        self.removed=True
+        self.clean()
+        
+        self.world.DestroyBody(self.player_foot)
+        self.world.DestroyBody(self.player_head)
+        self.player_foot=self.player_head=None
+        
+    def __init__(self,world:b2World,playerXinit,playerYinit) -> None:
         self.world=world
         self.player_foot=player_foot=self.world.CreateDynamicBody(
             fixtures=b2FixtureDef(userData={"role":self,"half":"down"},friction=10,
@@ -327,7 +350,9 @@ class NormalMob:
         self.playerJointPlan.dampingRatio=0.7
         self.playermoving = self.world.CreateJoint(self.playerJointPlan)
     def clean(self):
-        self.world.DestroyJoint(self.playermoving)
+        if self.playermoving is not None:
+            self.world.DestroyJoint(self.playermoving)
+        self.playermoving=None
     def walk(self,speed):
         speed*=self.walkspeed
         if speed > 0:
@@ -351,19 +376,19 @@ class NormalMob:
             surface.blit(self.world.world.gloop.flipImages(6+round(self.player_foot.angle)%2),zoom_func(x,y+1) )
             surface.blit(self.world.world.gloop.flipImages(5),zoom_func(X,Y) )
             surface.blit(self.world.world.gloop.flipImages(8),zoom_func(x,Y) )
-class Player(NormalMob):
+class Player(Humanoid):
     @contextmanager
     def tick(self):
         with FastShoes().onuse(self):
             with FastShoes().onuse(self):##temp
                 yield self.jump() if self.wannajump else self.unjump()
                 self.clean()
-class NPC(NormalMob):
+class NPC(Humanoid):
     def __init__(self, world, playerXinit, playerYinit) -> None:
         super().__init__(world, playerXinit, playerYinit)
         
         world.NPCs.append(self)
-    died=0
+
     counter=0
     @contextmanager
     def tick(self):
@@ -418,7 +443,7 @@ class Item:
 
 class FastShoes(Item):
     @contextmanager
-    def onuse(self,user:NormalMob):
+    def onuse(self,user:Humanoid):
         ori=user.walkspeed
         user.walkspeed*=1.5
         yield
