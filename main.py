@@ -48,8 +48,8 @@ class Gloop:
         self.flipImages=lru_cache(8)(lambda N:pygame.transform.flip(self.Images[N],1,0))
     def world2screen(self,x,y):
         return (
-        floor((x-self.centerX)*self.pixpu+self.screen.get_width()/2),
-        floor((self.centerY-y)*self.pixpu+self.screen.get_height()/2)
+        ((x-self.centerX)*self.pixpu+self.screen.get_width()/2),
+        ((self.centerY-y)*self.pixpu+self.screen.get_height()/2)
         )
     def screen2world(self,x,y):
         return (
