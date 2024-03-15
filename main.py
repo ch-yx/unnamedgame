@@ -272,7 +272,8 @@ class Level:
 
     def onkeydown(self,key):
         #self.pressed[key]=True
-        pass
+        if key==pygame.K_SPACE:
+            self.player.wannaattack=True
     def onkeyup(self,key):
         #self.pressed[key]=False
         pass
@@ -400,10 +401,15 @@ class Humanoid(Damageable):
             surface.blit(self.world.world.gloop.flipImages(8),zoom_func(x,Y) )
 class Player(Humanoid):
     isPlayer=True
+    wannaattack=False
     @contextmanager
     def tick(self):
         with FastShoes().onuse(self):
             with FastShoes().onuse(self):##temp
+                if self.wannaattack:
+                    self.wannaattack=False
+                    for i in self.world.NPCs:
+                        self.attack(i,10,0b0)
                 yield self.jump() if self.wannajump else self.unjump()
                 self.clean()
 class NPC(Humanoid):
