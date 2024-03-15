@@ -209,6 +209,7 @@ class Level:
             _npcs=[]
             for i in self.world.NPCs:
                 if i.died:
+                    i.onremove()
                     continue
                 Entityticks.enter_context(i.tick())
                 _npcs.append(i)
@@ -274,9 +275,13 @@ class Level:
     def onkeyup(self,key):
         self.pressed[key]=False
 class Damageable:
-    def attack(self):
+    isPlayer=False
+    def __init__(self, world:b2World, playerXinit, playerYinit) -> None:        
+        if not self.isPlayer:world.NPCs.append(self)
+        self.world=world
+    def attack(self,other:"Damageable",hearts:float,flags:int):
         pass
-    def beharmed(self):
+    def beharmed(self,other:"Damageable",hearts:float,flags:int):
         pass
     def onkilled(self):
         self.died=True
@@ -300,10 +305,13 @@ class Humanoid(Damageable):
     buttomsize=0.5
     isSlime=False
     facing=1  #1 or -1
-    def attack(self):
-        pass
-    def beharmed(self):
-        pass
+    health=20.0
+    def attack(self,other:"Damageable",hearts:float,flags:int):
+        other.beharmed(self,hearts,flags)
+    def beharmed(self,other:"Damageable",hearts:float,flags:int):
+        self.health-=hearts
+        if self.health<=0:
+            self.onkilled()
     
     def onremove(self):
         if self.removed:return
@@ -315,7 +323,7 @@ class Humanoid(Damageable):
         self.player_foot=self.player_head=None
         
     def __init__(self,world:b2World,playerXinit,playerYinit) -> None:
-        self.world=world
+        super().__init__(world,playerXinit,playerYinit)
         self.player_foot=player_foot=self.world.CreateDynamicBody(
             fixtures=b2FixtureDef(userData={"role":self,"half":"down"},friction=10,
                 shape=b2CircleShape(radius=self.buttomsize),
@@ -329,37 +337,49 @@ class Humanoid(Damageable):
                 density=self.upperdensity,isSensor=self.isSlime),
             bullet=False,
             position=(0.5+playerXinit, 1.5+playerYinit))
-        self.playerJointPlan=b2WheelJointDef(
-            bodyB=player_head,
-            bodyA=player_foot,
+        self.playerspine=None
+
+    playerJointPlan_jump=b2WheelJointDef(
             localAnchorB=(0,-1.5/2),
             localAnchorA=(0, 0),
             enableMotor=True,
             motorSpeed=0,
             maxMotorTorque=10000,
             )
-        self.playermoving=None
+    playerJointPlan_jump.localAnchorB=(0,-1)
+    playerJointPlan_jump.frequencyHz=50
+
+    playerJointPlan_unjump=b2WheelJointDef(
+            localAnchorB=(0,-1.5/2),
+            localAnchorA=(0, 0),
+            enableMotor=True,
+            motorSpeed=0,
+            maxMotorTorque=10000,
+            )
+    playerJointPlan_unjump.localAnchorB=(0,-1.5/2)
+    playerJointPlan_unjump.frequencyHz=3
+    playerJointPlan_unjump.dampingRatio=0.7
+
     def jump(self):
         self.player_foot.angle=-40*self.facing
-        self.playerJointPlan.localAnchorB=(0,-1)
-        self.playerJointPlan.frequencyHz=50
-        self.playermoving = self.world.CreateJoint(self.playerJointPlan)
+        self.playerJointPlan_jump.bodyB=self.player_head
+        self.playerJointPlan_jump.bodyA=self.player_foot
+        self.playerspine = self.world.CreateJoint(self.playerJointPlan_jump)
     def unjump(self):  
-        self.playerJointPlan.localAnchorB=(0,-1.5/2)
-        self.playerJointPlan.frequencyHz=3
-        self.playerJointPlan.dampingRatio=0.7
-        self.playermoving = self.world.CreateJoint(self.playerJointPlan)
+        self.playerJointPlan_unjump.bodyB=self.player_head
+        self.playerJointPlan_unjump.bodyA=self.player_foot
+        self.playerspine = self.world.CreateJoint(self.playerJointPlan_unjump)
     def clean(self):
-        if self.playermoving is not None:
-            self.world.DestroyJoint(self.playermoving)
-        self.playermoving=None
+        if self.playerspine is not None:
+            self.world.DestroyJoint(self.playerspine)
+        self.playerspine=None
     def walk(self,speed):
         speed*=self.walkspeed
         if speed > 0:
             self.facing=1
         if speed < 0:
             self.facing=-1
-        self.playermoving.motorSpeed=speed
+        self.playerspine.motorSpeed=speed
     @property
     def eyepos(self):
         return self.player_head.position
@@ -377,6 +397,7 @@ class Humanoid(Damageable):
             surface.blit(self.world.world.gloop.flipImages(5),zoom_func(X,Y) )
             surface.blit(self.world.world.gloop.flipImages(8),zoom_func(x,Y) )
 class Player(Humanoid):
+    isPlayer=True
     @contextmanager
     def tick(self):
         with FastShoes().onuse(self):
@@ -384,10 +405,6 @@ class Player(Humanoid):
                 yield self.jump() if self.wannajump else self.unjump()
                 self.clean()
 class NPC(Humanoid):
-    def __init__(self, world, playerXinit, playerYinit) -> None:
-        super().__init__(world, playerXinit, playerYinit)
-        
-        world.NPCs.append(self)
 
     counter=0
     @contextmanager
@@ -443,7 +460,7 @@ class Item:
 
 class FastShoes(Item):
     @contextmanager
-    def onuse(self,user:Humanoid):
+    def onuse(self,user:Damageable):
         ori=user.walkspeed
         user.walkspeed*=1.5
         yield
