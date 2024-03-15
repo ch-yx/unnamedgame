@@ -143,6 +143,7 @@ class Level:
         self.world = b2World(gravity=(0, -10),contactListener=myContactListener())
         self.world.world=self
         self.world.NPCs=[]
+        self.world.futureNPCs=[]
         self.world.normalBlocks={}
         self.world.JBlocks={}
         self.world.LBlocks={}
@@ -205,7 +206,8 @@ class Level:
             self.player.wannajump=pressed[pygame.K_w]
             self.player.wannadown=pressed[pygame.K_s]
             Entityticks.enter_context(self.player.tick())
-
+            self.world.NPCs.extend(self.world.futureNPCs)
+            self.world.futureNPCs.clear()
             _npcs=[]
             for i in self.world.NPCs:
                 if i.died:
@@ -280,7 +282,7 @@ class Level:
 class Damageable:
     isPlayer=False
     def __init__(self, world:b2World, playerXinit, playerYinit) -> None:        
-        if not self.isPlayer:world.NPCs.append(self)
+        if not self.isPlayer:world.futureNPCs.append(self)
         self.world=world
     def attack(self,other:"Damageable",hearts:float,flags:int):
         pass
@@ -298,8 +300,13 @@ class Damageable:
         pass
     def draw():
         pass
+    def knockback(self,vec:b2Vec2,size):
+        pass
         
 class Humanoid(Damageable):
+    def knockback(self,vec:b2Vec2,size):
+        
+        self.player_foot.ApplyLinearImpulse((size/vec.length)*vec,self.player_foot.worldCenter,True)
     walkspeed=3
     wannadown=False
     wannajump=False
@@ -412,6 +419,7 @@ class Player(Humanoid):
                     self.wannaattack=False
                     for i in self.world.NPCs:
                         self.attack(i,10,0b0)
+                        i.knockback(i.eyepos-self.eyepos,20)
                 if not (self.inladder or self.isflying):
                     yield self.jump() if self.wannajump else self.unjump()
                     self.clean()
@@ -429,6 +437,10 @@ class Player(Humanoid):
 class NPC(Humanoid):
 
     counter=0
+    def onkilled(self):
+        #Slime(self.world,self.eyepos[0]-0.5,self.eyepos[1]-0.5)
+        #Slime(self.world,self.eyepos[0]-0.5,self.eyepos[1]-1.5)
+        return super().onkilled()
     @contextmanager
     def tick(self):
         self.counter+=1
