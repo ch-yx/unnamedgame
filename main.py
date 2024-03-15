@@ -9,6 +9,7 @@ def debugprint(x):
     print(x)
     return x
 CACHE_SIZE=7
+image_loader = lru_cache(maxsize=None)(pygame.image.load)
 class Gloop:
     
     # pygame setup
@@ -28,15 +29,21 @@ class Gloop:
         self.rezoom()
     def rezoom(self):
         self.mapscreencache.clear()
-        self.Images=(pygame.transform.scale(pygame.image.load('0.png'),(self.pixpu,self.pixpu))
-        ,pygame.transform.scale(pygame.image.load('0_.png'),(self.pixpu,self.pixpu))
-        ,pygame.transform.scale(pygame.image.load('1.png'),(self.pixpu,self.pixpu))
-        ,pygame.transform.scale(pygame.image.load('2.png'),(self.pixpu,self.pixpu))
-        ,pygame.transform.scale(pygame.image.load('3.png'),(self.pixpu,self.pixpu))
-        ,pygame.transform.scale(pygame.image.load('playerbody.png'),(self.pixpu,self.pixpu*2))
-        ,pygame.transform.scale(pygame.image.load('playerfoot1.png'),(self.pixpu,self.pixpu*2))
-        ,pygame.transform.scale(pygame.image.load('playerfoot2.png'),(self.pixpu,self.pixpu*2))
-        ,pygame.transform.scale(pygame.image.load('playerhand1.png'),(self.pixpu,self.pixpu*2))
+        self.Images=(pygame.transform.scale(image_loader('0.png'),(self.pixpu,self.pixpu))
+        ,pygame.transform.scale(image_loader('0_.png'),(self.pixpu,self.pixpu))
+        ,pygame.transform.scale(image_loader('1.png'),(self.pixpu,self.pixpu))
+        ,pygame.transform.scale(image_loader('2.png'),(self.pixpu,self.pixpu))
+        ,pygame.transform.scale(image_loader('3.png'),(self.pixpu,self.pixpu))
+        ,pygame.transform.scale(image_loader('playerbody.png'),(self.pixpu,self.pixpu*2))
+        ,pygame.transform.scale(image_loader('playerfoot1.png'),(self.pixpu,self.pixpu*2))
+        ,pygame.transform.scale(image_loader('playerfoot2.png'),(self.pixpu,self.pixpu*2))
+        ,pygame.transform.scale(image_loader('playerhand1.png'),(self.pixpu,self.pixpu*2))
+        ,pygame.transform.scale(image_loader('slime_air_b_1.png'),(self.pixpu,self.pixpu))
+        ,pygame.transform.scale(image_loader('slime_air_d_1.png'),(self.pixpu,self.pixpu))
+        ,pygame.transform.scale(image_loader('slime_b_1.png'),(self.pixpu,self.pixpu))
+        ,pygame.transform.scale(image_loader('slime_d_1.png'),(self.pixpu,self.pixpu))
+        ,pygame.transform.scale(image_loader('slime_air_b_2.png'),(self.pixpu,self.pixpu))
+        ,pygame.transform.scale(image_loader('slime_b_2.png'),(self.pixpu,self.pixpu))
         )
         self.flipImages=lru_cache(8)(lambda N:pygame.transform.flip(self.Images[N],1,0))
     def world2screen(self,x,y):
@@ -142,7 +149,7 @@ class Level:
         self.world.onewayBlocks={}
         #self.ground=self.world.CreateBody()
         map="""
-        ~~~~~~~~~~~~                   J
+        ~~~~~~~~~~~~         O         J
                     ~~~~~~~~~~~~~~~~~~J
                                      J
                                     J
@@ -158,6 +165,8 @@ class Level:
                     self.player=Player(self.world,j,-i)
                 elif c == "o":
                     Slime(self.world,j,-i)
+                elif c == "O":
+                    Slime(self.world,j,-i).slimecolor=1
                 elif c == "&":
                     NPC(self.world,j,-i)
                 elif c == "J":
@@ -266,6 +275,7 @@ class Level:
         self.pressed[key]=False
 
 class NormalMob:
+    walkspeed=1
     wannadown=False
     wannajump=False
     uppersize=(0.5,1.5/2)
@@ -319,6 +329,7 @@ class NormalMob:
     def clean(self):
         self.world.DestroyJoint(self.playermoving)
     def walk(self,speed):
+        speed*=self.walkspeed
         if speed > 0:
             self.facing=1
         if speed < 0:
@@ -343,8 +354,10 @@ class NormalMob:
 class Player(NormalMob):
     @contextmanager
     def tick(self):
-        yield self.jump() if self.wannajump else self.unjump()
-        self.clean()
+        with FastShoes().onuse(self):
+            with FastShoes().onuse(self):##temp
+                yield self.jump() if self.wannajump else self.unjump()
+                self.clean()
 class NPC(NormalMob):
     def __init__(self, world, playerXinit, playerYinit) -> None:
         super().__init__(world, playerXinit, playerYinit)
@@ -364,9 +377,10 @@ class NPC(NormalMob):
         self.clean()
 class Slime(NPC):
     isSlime=True
+    buttomsize=0.5
     upperdensity=5000
     uppersize=(0.01,0.01)
-    
+    slimecolor=0
     @contextmanager
     def tick(self):
         self.counter+=1
@@ -378,5 +392,35 @@ class Slime(NPC):
         else:
             yield self.jump()
         self.clean()
-Gloop().start()
+    def draw(self, surface, zoom_func, zoom):
+        aabb=self.player_foot.fixtures[0].GetAABB(0)
+        zom=zoom_func(aabb.lowerBound[0],aabb.upperBound[1])
+        if self.slimecolor==0: 
+            if self.player_foot.linearVelocity[1]>0:
+                surface.blit(self.world.world.gloop.Images[9],zom)
+                surface.blit(self.world.world.gloop.Images[10],zom)
+            else:
+                surface.blit(self.world.world.gloop.Images[11],zom)
+                surface.blit(self.world.world.gloop.Images[12],zom)
+        elif self.slimecolor==1:
+            if self.player_foot.linearVelocity[1]>0:
+                surface.blit(self.world.world.gloop.Images[13],zom)
+                surface.blit(self.world.world.gloop.Images[10],zom)
+            else:
+                surface.blit(self.world.world.gloop.Images[14],zom)
+                surface.blit(self.world.world.gloop.Images[12],zom)
 
+
+class Item:
+    @contextmanager
+    def onuse(self,user):
+        yield
+
+class FastShoes(Item):
+    @contextmanager
+    def onuse(self,user:NormalMob):
+        ori=user.walkspeed
+        user.walkspeed*=1.5
+        yield
+        user.walkspeed=ori
+Gloop().start()
