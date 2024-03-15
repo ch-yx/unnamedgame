@@ -178,7 +178,6 @@ class Level:
         
         
         
-        self.pressed = {pygame.K_w:False,pygame.K_s:False,pygame.K_a:False,pygame.K_d:False}
 
     @staticmethod
     def place_a_normal_block(world,x,y):
@@ -202,8 +201,9 @@ class Level:
         )
     def tick(self):
         with ExitStack() as Entityticks:
-            self.player.wannajump=self.pressed[pygame.K_w]
-            self.player.wannadown=self.pressed[pygame.K_s]
+            pressed=pygame.key.get_pressed()
+            self.player.wannajump=pressed[pygame.K_w]
+            self.player.wannadown=pressed[pygame.K_s]
             Entityticks.enter_context(self.player.tick())
 
             _npcs=[]
@@ -215,7 +215,7 @@ class Level:
                 _npcs.append(i)
             self.world.NPCs[:]=_npcs
             #self.playermoving.localAnchorB=(34,56)
-            self.player.walk(3*(self.pressed[pygame.K_d]-self.pressed[pygame.K_a]))
+            self.player.walk(3*(pressed[pygame.K_d]-pressed[pygame.K_a]))
             self.world.Step(1/60,10,10)
 
         
@@ -271,9 +271,11 @@ class Level:
 
 
     def onkeydown(self,key):
-        self.pressed[key]=True
+        #self.pressed[key]=True
+        pass
     def onkeyup(self,key):
-        self.pressed[key]=False
+        #self.pressed[key]=False
+        pass
 class Damageable:
     isPlayer=False
     def __init__(self, world:b2World, playerXinit, playerYinit) -> None:        
