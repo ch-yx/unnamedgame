@@ -403,6 +403,7 @@ class Player(Humanoid):
     isPlayer=True
     wannaattack=False
     inladder=False
+    isflying=False
     @contextmanager
     def tick(self):
         with FastShoes().onuse(self):
@@ -411,11 +412,20 @@ class Player(Humanoid):
                     self.wannaattack=False
                     for i in self.world.NPCs:
                         self.attack(i,10,0b0)
-                if not self.inladder:
+                if not (self.inladder or self.isflying):
                     yield self.jump() if self.wannajump else self.unjump()
                     self.clean()
                 else:
-                    pass
+                    olda,oldb=self.player_head.gravityScale,self.player_foot.gravityScale
+                    self.player_head.gravityScale=self.player_foot.gravityScale=0
+                    pressed=pygame.key.get_pressed()
+                    nowspeed=self.player_foot.linearVelocity
+                    targetspeed=2*b2Vec2(pressed[pygame.K_d]-pressed[pygame.K_a],self.wannajump-self.wannadown)
+                    self.player_foot.ApplyForce(5*(targetspeed-nowspeed),self.player_foot.worldCenter,True)
+                    yield self.unjump()
+                    self.player_head.gravityScale,self.player_foot.gravityScale=olda,oldb
+                    self.clean()
+                    
 class NPC(Humanoid):
 
     counter=0
