@@ -215,7 +215,7 @@ class Level:
                 _npcs.append(i)
             self.world.NPCs[:]=_npcs
             #self.playermoving.localAnchorB=(34,56)
-            self.player.walk(3*(pressed[pygame.K_d]-pressed[pygame.K_a]))
+            self.player.walk((pressed[pygame.K_d]-pressed[pygame.K_a]))
             self.world.Step(1/60,10,10)
 
         
@@ -300,7 +300,7 @@ class Damageable:
         pass
         
 class Humanoid(Damageable):
-    walkspeed=1
+    walkspeed=3
     wannadown=False
     wannajump=False
     uppersize=(0.5,1.5/2)
@@ -402,6 +402,7 @@ class Humanoid(Damageable):
 class Player(Humanoid):
     isPlayer=True
     wannaattack=False
+    inladder=False
     @contextmanager
     def tick(self):
         with FastShoes().onuse(self):
@@ -410,8 +411,11 @@ class Player(Humanoid):
                     self.wannaattack=False
                     for i in self.world.NPCs:
                         self.attack(i,10,0b0)
-                yield self.jump() if self.wannajump else self.unjump()
-                self.clean()
+                if not self.inladder:
+                    yield self.jump() if self.wannajump else self.unjump()
+                    self.clean()
+                else:
+                    pass
 class NPC(Humanoid):
 
     counter=0
@@ -420,7 +424,7 @@ class NPC(Humanoid):
         self.counter+=1
         if self.counter%60:
             self.unjump()
-            self.walk(6*((self.counter//100)%2-0.5))
+            self.walk(2*((self.counter//100)%2-0.5))
             yield
         else:
             yield self.jump()
