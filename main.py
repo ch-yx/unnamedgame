@@ -324,6 +324,7 @@ class Damageable:
         pass
         
 class Humanoid(Damageable):
+    inventory:list
     def knockback(self,vec:b2Vec2,size):
         
         self.player_foot.ApplyLinearImpulse((size/vec.length)*vec,self.player_foot.worldCenter,True)
@@ -354,6 +355,7 @@ class Humanoid(Damageable):
         
     def __init__(self,world:b2World,playerXinit,playerYinit) -> None:
         super().__init__(world,playerXinit,playerYinit)
+        self.inventory=[FastShoes(3),FastShoes(-1),nWeapon()]
         self.player_foot=player_foot=self.world.CreateDynamicBody(
             fixtures=b2FixtureDef(userData={"role":self,"half":"down"},friction=10,
                 shape=b2CircleShape(radius=self.buttomsize),
@@ -436,27 +438,30 @@ class Player(Humanoid):
     isflying=False
     @contextmanager
     def tick(self):
-        with FastShoes().onuse(self):
-            with FastShoes().onuse(self):##temp
-                if self.wannaattack:
-                    self.wannaattack=False
-                    for i in self.world.NPCs:
-                        self.attack(i,10,0b0)
-                        i.knockback(i.eyepos-self.eyepos,20)
-                if not (self.isflying or self.inladder):
-                    yield self.jump() if self.wannajump else self.unjump()
-                    self.clean()
-                else:
-                    olda,oldb=self.player_head.gravityScale,self.player_foot.gravityScale
-                    self.player_head.gravityScale=self.player_foot.gravityScale=0
-                    pressed=pygame.key.get_pressed()
-                    nowspeed=self.player_foot.linearVelocity
-                    targetspeed=2*b2Vec2(pressed[pygame.K_d]-pressed[pygame.K_a],self.wannajump-self.wannadown)
-                    self.player_foot.ApplyForce(5*(targetspeed-nowspeed),self.player_foot.worldCenter,True)
-                    yield self.unjump()
-                    self.player_head.gravityScale,self.player_foot.gravityScale=olda,oldb
-                    self.clean()
-                    
+        with ExitStack() as items:
+            for item in self.inventory:
+                items.enter_context(item.ifhave(self))
+            if self.wannaattack:
+                self.wannaattack=False
+                
+                for item in self.inventory:
+                    if isinstance(item,Weapon) and item.canbeused(self):
+                        item.onuse(self)
+                        break
+            if not (self.isflying or self.inladder):
+                yield self.jump() if self.wannajump else self.unjump()
+                self.clean()
+            else:
+                olda,oldb=self.player_head.gravityScale,self.player_foot.gravityScale
+                self.player_head.gravityScale=self.player_foot.gravityScale=0
+                pressed=pygame.key.get_pressed()
+                nowspeed=self.player_foot.linearVelocity
+                targetspeed=2*b2Vec2(pressed[pygame.K_d]-pressed[pygame.K_a],self.wannajump-self.wannadown)
+                self.player_foot.ApplyForce(5*(targetspeed-nowspeed),self.player_foot.worldCenter,True)
+                yield self.unjump()
+                self.player_head.gravityScale,self.player_foot.gravityScale=olda,oldb
+                self.clean()
+                
 class NPC(Humanoid):
 
     counter=0
@@ -512,14 +517,30 @@ class Slime(NPC):
 
 class Item:
     @contextmanager
-    def onuse(self,user):
+    def ifhave(self,user):
         yield
 
 class FastShoes(Item):
+    def __init__(self,k) -> None:
+        super().__init__()
+        self.k=k
     @contextmanager
-    def onuse(self,user:Damageable):
+    def ifhave(self,user:Damageable):
         ori=user.walkspeed
-        user.walkspeed*=1.5
+        user.walkspeed*=self.k
         yield
         user.walkspeed=ori
+
+class Weapon(Item):
+    def canbeused(self,user):
+        pass
+    def onuse(self,user):
+        pass
+class nWeapon(Weapon):#attack everything
+    def canbeused(self, user):
+        return True
+    def onuse(self, user):
+        for i in user.world.NPCs:
+            user.attack(i,10,0b0)
+            i.knockback(i.eyepos-user.eyepos,20)
 Gloop().start()
