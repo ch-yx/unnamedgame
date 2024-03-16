@@ -9,7 +9,7 @@ def debugprint(x):
     print(x)
     return x
 CACHE_SIZE=7
-image_loader = lru_cache(maxsize=None)(pygame.image.load)
+image_loader = lru_cache(maxsize=None)(lambda fname:pygame.image.load(f"res/{fname}"))
 class Gloop:
     
     # pygame setup
@@ -195,22 +195,22 @@ class Level:
     @staticmethod
     def place_a_normal_block(world,x,y):
         world.normalBlocks[(x,y)]=world.CreateStaticBody(angle=0,
-            fixtures=b2FixtureDef(friction=10,shape=b2LoopShape(vertices=((x, y), (1+x,y),(1+x, 1+y),(x, 1+y))),userData={"role":"ground"})
+            fixtures=b2FixtureDef(friction=10,shape=b2LoopShape(vertices=((x, y), (1+x,y),(1+x, 1+y),(x, 1+y))),userData={"role":"ground","team":None})
         )
     @staticmethod
     def place_a_J_block(world,x,y):
         world.JBlocks[(x,y)]=world.CreateStaticBody(angle=0,
-            fixtures=b2FixtureDef(friction=10,shape=b2LoopShape(vertices=((x, y), (1+x,y),(1+x, 1+y))),userData={"role":"ground"})
+            fixtures=b2FixtureDef(friction=10,shape=b2LoopShape(vertices=((x, y), (1+x,y),(1+x, 1+y))),userData={"role":"ground","team":None})
         )
     @staticmethod
     def place_a_L_block(world,x,y):
         world.LBlocks[(x,y)]=world.CreateStaticBody(angle=0,
-            fixtures=b2FixtureDef(friction=10,shape=b2LoopShape(vertices=((x, y), (1+x,y),(x, 1+y))),userData={"role":"ground"})
+            fixtures=b2FixtureDef(friction=10,shape=b2LoopShape(vertices=((x, y), (1+x,y),(x, 1+y))),userData={"role":"ground","team":None})
         )
     @staticmethod
     def place_a_oneway_block(world,x,y):
         world.onewayBlocks[(x,y)]=world.CreateStaticBody(angle=0,
-            fixtures=b2FixtureDef(friction=10,shape=b2LoopShape(vertices=((x, y+0.5), (1+x,y+0.5),(1+x, 1+y),(x, 1+y))),userData={"oneway":True,"role":"ground"})
+            fixtures=b2FixtureDef(friction=10,shape=b2LoopShape(vertices=((x, y+0.5), (1+x,y+0.5),(1+x, 1+y),(x, 1+y))),userData={"oneway":True,"role":"ground","team":None})
         )
     @staticmethod
     def place_a_ladder(world,x,y):
@@ -300,8 +300,9 @@ class Level:
         #self.pressed[key]=False
         pass
 class Damageable:
+    team=None
     isPlayer=False
-    def __init__(self, world:b2World, playerXinit, playerYinit) -> None:        
+    def __init__(self, world:b2World) -> None:        
         if not self.isPlayer:world.futureNPCs.append(self)
         self.world=world
     def attack(self,other:"Damageable",hearts:float,flags:int):
@@ -316,9 +317,9 @@ class Damageable:
         if self.removed:return
         self.removed=True
         self.clean()
-    def clean():
-        pass
-    def draw():
+    def clean(self):
+        raise Exception
+    def draw(self,surface,zoom_func,zoom):
         pass
     def knockback(self,vec:b2Vec2,size):
         pass
@@ -354,17 +355,17 @@ class Humanoid(Damageable):
         self.player_foot=self.player_head=None
         
     def __init__(self,world:b2World,playerXinit,playerYinit) -> None:
-        super().__init__(world,playerXinit,playerYinit)
-        self.inventory=[FastShoes(3),FastShoes(-1),nWeapon()]
+        super().__init__(world)
+        self.inventory=[Shooter(),FastShoes(3),FastShoes(-1),nWeapon()]
         self.player_foot=player_foot=self.world.CreateDynamicBody(
-            fixtures=b2FixtureDef(userData={"role":self,"half":"down"},friction=10,
+            fixtures=b2FixtureDef(userData={"role":self,"half":"down","team":self.team},friction=10,
                 shape=b2CircleShape(radius=self.buttomsize),
                 density=1.0),
             bullet=False,
             position=(0.5+playerXinit, 0.5+playerYinit))
         self.player_head=player_head=self.world.CreateDynamicBody(
             fixedRotation = True,
-            fixtures=b2FixtureDef(userData={"role":self,"half":"up"},friction=0,
+            fixtures=b2FixtureDef(userData={"role":self,"half":"up","team":self.team},friction=0,
                 shape=b2PolygonShape(box=self.uppersize),
                 density=self.upperdensity,isSensor=self.isSlime),
             bullet=False,
@@ -429,6 +430,7 @@ class Humanoid(Damageable):
             surface.blit(self.world.world.gloop.flipImages(5),zoom_func(X,Y) )
             surface.blit(self.world.world.gloop.flipImages(8),zoom_func(x,Y) )
 class Player(Humanoid):
+    team="A"
     isPlayer=True
     wannaattack=False
     @property
@@ -463,7 +465,7 @@ class Player(Humanoid):
                 self.clean()
                 
 class NPC(Humanoid):
-
+    team="B"
     counter=0
     def onkilled(self):
         #Slime(self.world,self.eyepos[0]-0.5,self.eyepos[1]-0.5)
@@ -543,4 +545,29 @@ class nWeapon(Weapon):#attack everything
         for i in user.world.NPCs:
             user.attack(i,10,0b0)
             i.knockback(i.eyepos-user.eyepos,20)
+
+class Shooter(Weapon):
+    def canbeused(self, user):
+        return True
+    def onuse(self, user):
+        Projectile(user.world,*user.eyepos,user)
+
+class Projectile(Damageable):
+    def __init__(self, world: b2World, x, y,owner) -> None:
+        super().__init__(world)
+        self.team=owner.team
+        self.body=world.CreateDynamicBody(
+            fixtures=b2FixtureDef(userData={"role":self,"owner":owner,"team":self.team},
+                shape=b2CircleShape(radius=0.1),
+                density=0),gravityScale=0,
+            bullet=False,
+            position=(x, y))
+    def draw(self, surface, zoom_func, zoom):
+        fixture=self.body.fixtures[0]
+        trans=self.body.transform
+        pygame.draw.circle(surface, [128,128,128],zoom_func(*(trans*fixture.shape.pos)), zoom*fixture.shape.radius)
+    @contextmanager
+    def tick(self):
+        yield
+        
 Gloop().start()
