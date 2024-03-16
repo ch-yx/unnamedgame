@@ -44,6 +44,8 @@ class Gloop:
         ,pygame.transform.scale(image_loader('slime_d_1.png'),(self.pixpu,self.pixpu))
         ,pygame.transform.scale(image_loader('slime_air_b_2.png'),(self.pixpu,self.pixpu))
         ,pygame.transform.scale(image_loader('slime_b_2.png'),(self.pixpu,self.pixpu))
+        ,pygame.transform.scale(image_loader('ladder.png'),(self.pixpu,self.pixpu))
+        ,pygame.transform.scale(image_loader('ladder_.png'),(self.pixpu,self.pixpu))
         )
         self.flipImages=lru_cache(8)(lambda N:pygame.transform.flip(self.Images[N],1,0))
     def world2screen(self,x,y):
@@ -148,13 +150,22 @@ class Level:
         self.world.JBlocks={}
         self.world.LBlocks={}
         self.world.onewayBlocks={}
+        self.world.ladders={*()}
         #self.ground=self.world.CreateBody()
         map="""
-        ~~~~~~~~~~~~         O         J
-                    ~~~~~~~~~~~~~~~~~~J
-                                     J
-                                    J
-        ###                  J###  J  
+        
+        
+                H
+        ~~~~~~~~H~~~~~
+                H
+               HH
+               HH
+               HH
+        ~~~~~~~H~~~~         O         J
+               H    ~~~~~~~~~~~~~~~~~~J
+               H                     J
+               H                    J
+        ###    H             J###  J  
         ###&  J#L    ^  o   #    ##
         #####~   ###########
         """
@@ -176,7 +187,8 @@ class Level:
                     self.place_a_L_block(self.world,j,-i)
                 elif c == "~":
                     self.place_a_oneway_block(self.world,j,-i)
-        
+                elif c == "H":
+                    self.place_a_ladder(self.world,j,-i)
         
         
 
@@ -200,6 +212,9 @@ class Level:
         world.onewayBlocks[(x,y)]=world.CreateStaticBody(angle=0,
             fixtures=b2FixtureDef(friction=10,shape=b2LoopShape(vertices=((x, y+0.5), (1+x,y+0.5),(1+x, 1+y),(x, 1+y))),userData={"oneway":True,"role":"ground"})
         )
+    @staticmethod
+    def place_a_ladder(world,x,y):
+        world.ladders.add((x,y))
     def tick(self):
         with ExitStack() as Entityticks:
             pressed=pygame.key.get_pressed()
@@ -244,6 +259,11 @@ class Level:
                 X,x=divmod(x,CACHE_SIZE)
                 Y,y=divmod(y,CACHE_SIZE)
                 self.gloop.mapscreencache[(X,Y)].blit(self.gloop.Images[4],(zoom*x,zoom*(CACHE_SIZE-1-y)))
+            for x,y in self.world.ladders:
+                laddertype=(x+y)%2
+                X,x=divmod(x,CACHE_SIZE)
+                Y,y=divmod(y,CACHE_SIZE)
+                self.gloop.mapscreencache[(X,Y)].blit(self.gloop.Images[15+laddertype],(zoom*x,zoom*(CACHE_SIZE-1-y)))
         if 0:
             for body in self.world.bodies:
                 trans=body.transform
@@ -409,7 +429,10 @@ class Humanoid(Damageable):
 class Player(Humanoid):
     isPlayer=True
     wannaattack=False
-    inladder=False
+    @property
+    def inladder(self):
+        x,y=self.eyepos
+        return (floor(x),floor(y)) in self.world.ladders
     isflying=False
     @contextmanager
     def tick(self):
@@ -420,7 +443,7 @@ class Player(Humanoid):
                     for i in self.world.NPCs:
                         self.attack(i,10,0b0)
                         i.knockback(i.eyepos-self.eyepos,20)
-                if not (self.inladder or self.isflying):
+                if not (self.isflying or self.inladder):
                     yield self.jump() if self.wannajump else self.unjump()
                     self.clean()
                 else:
