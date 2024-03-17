@@ -119,9 +119,23 @@ class Level:
             def EndContact(self, contact):
                 pass
             def PreSolve(self, contact, oldManifold):
-                if contact.fixtureA.userData is not None and contact.fixtureA.userData is not None:
+                if contact.fixtureA.userData is not None and contact.fixtureB.userData is not None:
                     if contact.fixtureA.userData.get("role",None) is contact.fixtureB.userData.get("role",...):
                         contact.enabled = False
+                        return
+                    iA=isinstance(A:=contact.fixtureA.userData.get("role",None),Projectile)
+                    iB=isinstance(B:=contact.fixtureB.userData.get("role",None),Projectile)
+                    if iA or iB:
+                        if contact.fixtureA.userData.get("team",None) is contact.fixtureB.userData.get("team",None):
+                            contact.enabled = False
+                            return
+                    if iA and not iB:
+                        contact.enabled = not A.hiton(B)
+                        return
+                    if iB and not iA:
+                        contact.enabled = not B.hiton(A)
+                        return
+                    if iA and iB:
                         return
                 if contact.fixtureA.userData is not None and contact.fixtureA.userData.get("oneway"):
                     if contact.fixtureB.userData is not None and isinstance(thatplayer:=contact.fixtureB.userData.get("role"),Humanoid) and (thatplayer.wannadown or 
@@ -264,7 +278,7 @@ class Level:
                 X,x=divmod(x,CACHE_SIZE)
                 Y,y=divmod(y,CACHE_SIZE)
                 self.gloop.mapscreencache[(X,Y)].blit(self.gloop.Images[15+laddertype],(zoom*x,zoom*(CACHE_SIZE-1-y)))
-        if 0:
+        if 1:
             for body in self.world.bodies:
                 trans=body.transform
                 for fixture in body.fixtures:
@@ -318,7 +332,7 @@ class Damageable:
         self.removed=True
         self.clean()
     def clean(self):
-        raise Exception
+        pass
     def draw(self,surface,zoom_func,zoom):
         pass
     def knockback(self,vec:b2Vec2,size):
@@ -356,7 +370,7 @@ class Humanoid(Damageable):
         
     def __init__(self,world:b2World,playerXinit,playerYinit) -> None:
         super().__init__(world)
-        self.inventory=[Shooter(),FastShoes(3),FastShoes(-1),nWeapon()]
+        self.inventory=[Shooter(),FastShoes(3),FastShoes(1),nWeapon()]
         self.player_foot=player_foot=self.world.CreateDynamicBody(
             fixtures=b2FixtureDef(userData={"role":self,"half":"down","team":self.team},friction=10,
                 shape=b2CircleShape(radius=self.buttomsize),
@@ -560,8 +574,8 @@ class Projectile(Damageable):
             fixtures=b2FixtureDef(userData={"role":self,"owner":owner,"team":self.team},
                 shape=b2CircleShape(radius=0.1),
                 density=0),gravityScale=0,
-            bullet=False,
-            position=(x, y))
+            bullet=True,
+            position=(x, y),linearVelocity=(0,owner.facing))
     def draw(self, surface, zoom_func, zoom):
         fixture=self.body.fixtures[0]
         trans=self.body.transform
@@ -569,5 +583,9 @@ class Projectile(Damageable):
     @contextmanager
     def tick(self):
         yield
-        
+    def hiton(self,other:Damageable):#return true to pass through
+        self.onkilled()
+        return True
+    def onremove(self):
+        self.world.DestroyBody(self.body)
 Gloop().start()
