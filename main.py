@@ -313,7 +313,20 @@ class Level:
     def onkeyup(self,key):
         #self.pressed[key]=False
         pass
+INF=float("inf")
+NINF=-INF
 class Damageable:
+    def getAABB(self):
+        aabb=b2AABB()
+        aabb.lowerBound=(INF,INF)
+        aabb.upperBound=(NINF,NINF)
+        for body in self.bodies():
+            transform = body.transform
+            for fixture in body.fixtures:
+                shape = fixture.shape
+                for childIndex in range(shape.childCount):
+                    aabb.Combine(shape.getAABB(transform, childIndex))            
+        return aabb
     team=None
     isPlayer=False
     def __init__(self, world:b2World) -> None:        
@@ -339,6 +352,9 @@ class Damageable:
         pass
         
 class Humanoid(Damageable):
+    def bodies(s):
+        yield s.player_head
+        yield s.player_foot
     inventory:list
     def knockback(self,vec:b2Vec2,size):
         
@@ -351,7 +367,7 @@ class Humanoid(Damageable):
     buttomsize=0.5
     isSlime=False
     facing=1  #1 or -1
-    health=20.0
+    maxHealth=20.0
     def attack(self,other:"Damageable",hearts:float,flags:int):
         other.beharmed(self,hearts,flags)
     def beharmed(self,other:"Damageable",hearts:float,flags:int):
@@ -370,6 +386,7 @@ class Humanoid(Damageable):
         
     def __init__(self,world:b2World,playerXinit,playerYinit) -> None:
         super().__init__(world)
+        self.health=self.maxHealth
         self.inventory=[Shooter(),FastShoes(3),FastShoes(1),nWeapon()]
         self.player_foot=player_foot=self.world.CreateDynamicBody(
             fixtures=b2FixtureDef(userData={"role":self,"half":"down","team":self.team},friction=10,
@@ -430,7 +447,17 @@ class Humanoid(Damageable):
     @property
     def eyepos(self):
         return self.player_head.position
+    def drawhealthbar(self,surface,zoom_func):
+        temp=self.getAABB()
+        
+        L2=temp.upperBound
+        L1=b2Vec2(temp.lowerBound[0],L2[1])
+        L3=(self.maxHealth-self.health)/self.maxHealth*L1+self.health/self.maxHealth*L2
+        h=b2Vec2(0,0.3)
+        pygame.draw.polygon(surface,"green",tuple(zoom_func(*i) for i in (L1,L3,L3+h,L1+h)))
+        pygame.draw.polygon(surface,"gray",tuple(zoom_func(*i) for i in (L3,L2,L2+h,L3+h)))
     def draw(self,surface,zoom_func,zoom):
+        self.drawhealthbar(surface,zoom_func)
         X=self.player_head.fixtures[0].GetAABB(0).lowerBound[0]
         Y=self.player_head.fixtures[0].GetAABB(0).upperBound[1]
         x=self.player_foot.fixtures[0].GetAABB(0).lowerBound[0]
@@ -513,6 +540,7 @@ class Slime(NPC):
             yield self.jump()
         self.clean()
     def draw(self, surface, zoom_func, zoom):
+        self.drawhealthbar( surface, zoom_func)
         aabb=self.player_foot.fixtures[0].GetAABB(0)
         zom=zoom_func(aabb.lowerBound[0],aabb.upperBound[1])
         if self.slimecolor==0: 
@@ -567,6 +595,8 @@ class Shooter(Weapon):
         Projectile(user.world,*usepos,user,3*b2Vec2(usedir))
 
 class Projectile(Damageable):
+    def bodies(s):
+        yield s.body
     def __init__(self, world: b2World, x, y,owner,dir) -> None:
         super().__init__(world)
         self.team=owner.team
@@ -581,12 +611,14 @@ class Projectile(Damageable):
         fixture=self.body.fixtures[0]
         trans=self.body.transform
         pygame.draw.circle(surface, [128,128,128],zoom_func(*(trans*fixture.shape.pos)), zoom*fixture.shape.radius)
+
+
     @contextmanager
     def tick(self):
         yield
     def hiton(self,other:Damageable):#return true to pass through
         if isinstance(other,Damageable):
-            self.owner.attack(other,10,0b0)
+            self.owner.attack(other,3,0b0)
             other.knockback(other.eyepos-self.owner.eyepos,20)
         self.onkilled()
         return True
