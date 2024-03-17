@@ -462,7 +462,7 @@ class Player(Humanoid):
                 
                 for item in self.inventory:
                     if isinstance(item,Weapon) and item.canbeused(self):
-                        item.onuse(self)
+                        item.onuse(self,self.eyepos,(self.facing,0))
                         break
             if not (self.isflying or self.inladder):
                 yield self.jump() if self.wannajump else self.unjump()
@@ -550,12 +550,12 @@ class FastShoes(Item):
 class Weapon(Item):
     def canbeused(self,user):
         pass
-    def onuse(self,user):
+    def onuse(self,user,usepos,usedir):
         pass
 class nWeapon(Weapon):#attack everything
     def canbeused(self, user):
         return True
-    def onuse(self, user):
+    def onuse(self, user,usepos,usedir):
         for i in user.world.NPCs:
             user.attack(i,10,0b0)
             i.knockback(i.eyepos-user.eyepos,20)
@@ -563,19 +563,20 @@ class nWeapon(Weapon):#attack everything
 class Shooter(Weapon):
     def canbeused(self, user):
         return True
-    def onuse(self, user):
-        Projectile(user.world,*user.eyepos,user)
+    def onuse(self, user,usepos,usedir):
+        Projectile(user.world,*usepos,user,3*b2Vec2(usedir))
 
 class Projectile(Damageable):
-    def __init__(self, world: b2World, x, y,owner) -> None:
+    def __init__(self, world: b2World, x, y,owner,dir) -> None:
         super().__init__(world)
         self.team=owner.team
+        self.owner=owner
         self.body=world.CreateDynamicBody(
             fixtures=b2FixtureDef(userData={"role":self,"owner":owner,"team":self.team},
                 shape=b2CircleShape(radius=0.1),
                 density=0),gravityScale=0,
             bullet=True,
-            position=(x, y),linearVelocity=(0,owner.facing))
+            position=(x, y),linearVelocity=dir)
     def draw(self, surface, zoom_func, zoom):
         fixture=self.body.fixtures[0]
         trans=self.body.transform
@@ -584,6 +585,9 @@ class Projectile(Damageable):
     def tick(self):
         yield
     def hiton(self,other:Damageable):#return true to pass through
+        if isinstance(other,Damageable):
+            self.owner.attack(other,10,0b0)
+            other.knockback(other.eyepos-self.owner.eyepos,20)
         self.onkilled()
         return True
     def onremove(self):
