@@ -130,10 +130,10 @@ class Level:
                             contact.enabled = False
                             return
                     if iA and not iB:
-                        contact.enabled = not A.hiton(B)
+                        contact.enabled = not A.hiton(B,contact.fixtureB.body)
                         return
                     if iB and not iA:
-                        contact.enabled = not B.hiton(A)
+                        contact.enabled = not B.hiton(A,contact.fixtureA.body)
                         return
                     if iA and iB:
                         return
@@ -169,16 +169,16 @@ class Level:
         map="""
         
         
-                H
-        ~~~~~~~~H~~~~~
-                H
-               HH
-               HH
-               HH
+                H                       #
+        ~~~~~~~~H~~~~~                  #
+                H                       #
+               HH                       #
+               HH                       #
+               HH                       #
         ~~~~~~~H~~~~         O         J
-               H    ~~~~~~~~~~~~~~~~~~J
-               H                     J
-               H                    J
+        #      H    ~~~~~~~~~~~~~~~~~~J
+        #      H                     J
+        #      H                    J
         ###    H             J###  J  
         ###&  J#L    ^  o   #    ##
         #####~   ###########
@@ -332,9 +332,9 @@ class Damageable:
     def __init__(self, world:b2World) -> None:        
         if not self.isPlayer:world.futureNPCs.append(self)
         self.world=world
-    def attack(self,other:"Damageable",hearts:float,flags:int):
+    def attack(self,other:"Damageable",hearts:float,flags:int,part=None):
         pass
-    def beharmed(self,other:"Damageable",hearts:float,flags:int):
+    def beharmed(self,other:"Damageable",hearts:float,flags:int,part=None):
         pass
     def onkilled(self):
         self.died=True
@@ -348,7 +348,7 @@ class Damageable:
         pass
     def draw(self,surface,zoom_func,zoom):
         pass
-    def knockback(self,vec:b2Vec2,size):
+    def knockback(self,vec:b2Vec2,size,part=None):
         pass
         
 class Humanoid(Damageable):
@@ -356,9 +356,9 @@ class Humanoid(Damageable):
         yield s.player_head
         yield s.player_foot
     inventory:list
-    def knockback(self,vec:b2Vec2,size):
-        
-        self.player_foot.ApplyLinearImpulse((size/vec.length)*vec,self.player_foot.worldCenter,True)
+    def knockback(self,vec:b2Vec2,size,part=None):
+        if part is None:part=self.player_foot
+        part.ApplyLinearImpulse((size/vec.length)*vec,self.player_foot.worldCenter,True)
     walkspeed=3
     wannadown=False
     wannajump=False
@@ -368,9 +368,9 @@ class Humanoid(Damageable):
     isSlime=False
     facing=1  #1 or -1
     maxHealth=20.0
-    def attack(self,other:"Damageable",hearts:float,flags:int):
-        other.beharmed(self,hearts,flags)
-    def beharmed(self,other:"Damageable",hearts:float,flags:int):
+    def attack(self,other:"Damageable",hearts:float,flags:int,part=None):
+        other.beharmed(self,hearts,flags,part)
+    def beharmed(self,other:"Damageable",hearts:float,flags:int,part=None):
         self.health-=hearts
         if self.health<=0:
             self.onkilled()
@@ -616,10 +616,10 @@ class Projectile(Damageable):
     @contextmanager
     def tick(self):
         yield
-    def hiton(self,other:Damageable):#return true to pass through
+    def hiton(self,other:Damageable,part:b2Body=None):#return true to pass through
         if isinstance(other,Damageable):
             self.owner.attack(other,3,0b0)
-            other.knockback(other.eyepos-self.owner.eyepos,20)
+            other.knockback(other.eyepos-self.owner.eyepos,20,part)
         self.onkilled()
         return True
     def onremove(self):
