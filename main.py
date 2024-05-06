@@ -1,5 +1,6 @@
 
 from Box2D import *
+from Box2D import b2World
 import pygame
 from math import floor
 from collections import defaultdict
@@ -22,7 +23,7 @@ class Gloop:
         
         
                 H                       #
-        ~~~~~~~~H~~~~~                  #
+        ~~~~~~~~H~~~~~i                 #
                 H                       #
                HH                       #
                HH                       #
@@ -203,6 +204,8 @@ class Level:
                     self.place_a_oneway_block(self.world,j,-i)
                 elif c == "H":
                     self.place_a_ladder(self.world,j,-i)
+                elif c == "i":
+                    ItemEntity(self.world,Shooter(),j,-i)
         
         
 
@@ -316,6 +319,9 @@ class Level:
 INF=float("inf")
 NINF=-INF
 class Damageable:
+    @property
+    def eyepos(self):
+        return self.getAABB().center
     def getAABB(self,bs=None):
         aabb=b2AABB()
         aabb.lowerBound=(INF,INF)
@@ -350,12 +356,19 @@ class Damageable:
         pass
     def knockback(self,vec:b2Vec2,size,part=None):
         pass
+    def bodies(s):
+        yield from ()
+    def pickup(s,i):
+        return False
         
 class Humanoid(Damageable):
     def bodies(s):
         yield s.player_foot
         yield s.player_head
     inventory:list
+    def pickup(s,i):
+        s.inventory.append(i)
+        return True
     def knockback(self,vec:b2Vec2,size,part=None):
         if part is None:part=self.player_foot
         part.ApplyLinearImpulse((size/vec.length)*vec,self.player_foot.worldCenter,True)
@@ -387,7 +400,7 @@ class Humanoid(Damageable):
     def __init__(self,world:b2World,playerXinit,playerYinit) -> None:
         super().__init__(world)
         self.health=self.maxHealth
-        self.inventory=[Shooter(),FastShoes(3),FastShoes(1),nWeapon()]
+        self.inventory=[FastShoes(3),FastShoes(1),nWeapon()]
         self.player_foot=player_foot=self.world.CreateDynamicBody(
             fixtures=b2FixtureDef(userData={"role":self,"half":"down","team":self.team},friction=10,
                 shape=b2CircleShape(radius=self.buttomsize),
@@ -476,8 +489,10 @@ class Humanoid(Damageable):
             surface.blit(self.world.world.gloop.flipImages(6+round(self.player_foot.angle)%2),zoom_func(x,y+1) )
             surface.blit(self.world.world.gloop.flipImages(5),zoom_func(X,Y) )
             surface.blit(self.world.world.gloop.flipImages(8),zoom_func(x,Y) )
+TEAM_A="A"
+TEAM_B="B"
 class Player(Humanoid):
-    team="A"
+    team=TEAM_A
     isPlayer=True
     wannaattack=False
     @property
@@ -512,7 +527,7 @@ class Player(Humanoid):
                 self.clean()
                 
 class NPC(Humanoid):
-    team="B"
+    team=TEAM_B
     counter=0
     def onkilled(self):
         #Slime(self.world,self.eyepos[0]-0.5,self.eyepos[1]-0.5)
@@ -630,4 +645,30 @@ class Projectile(Damageable):
         return True
     def onremove(self):
         self.world.DestroyBody(self.body)
+class ItemEntity(Damageable):
+    @contextmanager
+    def tick(s):
+        yield
+    team=TEAM_A
+    def __init__(self, world: b2World,item:Item,Xinit,Yinit) -> None:
+        super().__init__(world)
+        self.item=item
+        self.body=self.world.CreateDynamicBody(
+            fixedRotation = True,
+            fixtures=b2FixtureDef(userData={"role":self,"team":self.team},friction=0,
+                shape=b2PolygonShape(box=(0.4,0.4)),
+                isSensor=False),
+            bullet=False,
+            position=(0.5+Xinit, 0.5+Yinit))
+    def onremove(self):
+        self.removed=self.died=True
+        if self.body is None:
+            self.world.DestroyBody(self.body)
+        self.body = None
+    def onpickedup(self,other):
+        if self.died:return
+        if other.pickup(self.item):
+            self.onkilled()
+
+    
 Gloop().start()
