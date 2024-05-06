@@ -18,7 +18,23 @@ class Gloop:
         self.screen = pygame.display.set_mode((1280, 720),pygame.RESIZABLE)
         self.clock = pygame.time.Clock()
         self.running = True
-        self.world=Level(self)
+        self.world=Level(self, wmap="""
+        
+        
+                H                       #
+        ~~~~~~~~H~~~~~                  #
+                H                       #
+               HH                       #
+               HH                       #
+               HH                       #
+        ~~~~~~~H~~~~         O         J
+        #      H    ~~~~~~~~~~~~~~~~~~J
+        #      H                     J
+        #      H                    J
+        ###    H             J###  J  
+        ###&  J#L    ^  o   #    ##
+        #####~   ###########
+        """)
         self.centerX=0
         self.centerY=0
         self.pixpu=50
@@ -109,7 +125,7 @@ class Gloop:
         finally:
             pygame.quit()
 class Level:
-    def __init__(self,gloop) -> None:
+    def __init__(self,gloop,wmap) -> None:
         self.gloop=gloop
         class myContactListener(b2ContactListener):
             def __init__(self):
@@ -166,24 +182,8 @@ class Level:
         self.world.onewayBlocks={}
         self.world.ladders={*()}
         #self.ground=self.world.CreateBody()
-        map="""
-        
-        
-                H                       #
-        ~~~~~~~~H~~~~~                  #
-                H                       #
-               HH                       #
-               HH                       #
-               HH                       #
-        ~~~~~~~H~~~~         O         J
-        #      H    ~~~~~~~~~~~~~~~~~~J
-        #      H                     J
-        #      H                    J
-        ###    H             J###  J  
-        ###&  J#L    ^  o   #    ##
-        #####~   ###########
-        """
-        for i,line in enumerate(map.splitlines()):
+
+        for i,line in enumerate(wmap.splitlines()):
             for j,c in enumerate(line):
                 if c == "#":
                     self.place_a_normal_block(self.world,j,-i)
@@ -278,7 +278,7 @@ class Level:
                 X,x=divmod(x,CACHE_SIZE)
                 Y,y=divmod(y,CACHE_SIZE)
                 self.gloop.mapscreencache[(X,Y)].blit(self.gloop.Images[15+laddertype],(zoom*x,zoom*(CACHE_SIZE-1-y)))
-        if 1:
+        if 0:
             for body in self.world.bodies:
                 trans=body.transform
                 for fixture in body.fixtures:
@@ -316,11 +316,11 @@ class Level:
 INF=float("inf")
 NINF=-INF
 class Damageable:
-    def getAABB(self):
+    def getAABB(self,bs=None):
         aabb=b2AABB()
         aabb.lowerBound=(INF,INF)
         aabb.upperBound=(NINF,NINF)
-        for body in self.bodies():
+        for body in self.bodies() if bs is None else bs:
             transform = body.transform
             for fixture in body.fixtures:
                 shape = fixture.shape
@@ -353,8 +353,8 @@ class Damageable:
         
 class Humanoid(Damageable):
     def bodies(s):
-        yield s.player_head
         yield s.player_foot
+        yield s.player_head
     inventory:list
     def knockback(self,vec:b2Vec2,size,part=None):
         if part is None:part=self.player_foot
@@ -458,10 +458,16 @@ class Humanoid(Damageable):
         pygame.draw.polygon(surface,"gray",tuple(zoom_func(*i) for i in (L3,L2,L2+h,L3+h)))
     def draw(self,surface,zoom_func,zoom):
         self.drawhealthbar(surface,zoom_func)
-        X=self.player_head.fixtures[0].GetAABB(0).lowerBound[0]
-        Y=self.player_head.fixtures[0].GetAABB(0).upperBound[1]
-        x=self.player_foot.fixtures[0].GetAABB(0).lowerBound[0]
-        y=self.player_foot.fixtures[0].GetAABB(0).upperBound[1]
+        h = self.getAABB((self.player_head,))
+        X=h.lowerBound[0]
+        Y=h.upperBound[1]
+        t = self.getAABB((self.player_foot,))
+        x=t.lowerBound[0]
+        y=t.upperBound[1]
+        # X=self.player_head.fixtures[0].GetAABB(0).lowerBound[0]
+        # Y=self.player_head.fixtures[0].GetAABB(0).upperBound[1]
+        # x=self.player_foot.fixtures[0].GetAABB(0).lowerBound[0]
+        # y=self.player_foot.fixtures[0].GetAABB(0).upperBound[1]
         if self.facing==1:
             surface.blit(self.world.world.gloop.Images[6+round(self.player_foot.angle)%2],zoom_func(x,y+1) )
             surface.blit(self.world.world.gloop.Images[5],zoom_func(X,Y) )
@@ -541,7 +547,7 @@ class Slime(NPC):
         self.clean()
     def draw(self, surface, zoom_func, zoom):
         self.drawhealthbar( surface, zoom_func)
-        aabb=self.player_foot.fixtures[0].GetAABB(0)
+        aabb=self.getAABB((self.player_foot,))#self.player_foot.fixtures[0].GetAABB(0)
         zom=zoom_func(aabb.lowerBound[0],aabb.upperBound[1])
         if self.slimecolor==0: 
             if self.player_foot.linearVelocity[1]>0:
@@ -592,7 +598,7 @@ class Shooter(Weapon):
     def canbeused(self, user):
         return True
     def onuse(self, user,usepos,usedir):
-        Projectile(user.world,*usepos,user,3*b2Vec2(usedir))
+        Projectile(user.world,*usepos,user,3*b2Vec2(usedir)+next(user.bodies()).linearVelocity)
 
 class Projectile(Damageable):
     def bodies(s):
