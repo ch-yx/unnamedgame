@@ -1,6 +1,5 @@
 
 from Box2D import *
-from Box2D import b2World
 import pygame
 from math import floor
 from collections import defaultdict
@@ -63,8 +62,10 @@ class Gloop:
         ,pygame.transform.scale(image_loader('slime_b_2.png'),(self.pixpu,self.pixpu))
         ,pygame.transform.scale(image_loader('ladder.png'),(self.pixpu,self.pixpu))
         ,pygame.transform.scale(image_loader('ladder_.png'),(self.pixpu,self.pixpu))
+        ,pygame.transform.scale(image_loader('boots1.png'),(self.pixpu*0.75,self.pixpu*0.75))#17
+        ,pygame.transform.scale(image_loader('shooter1.png'),(self.pixpu*0.75,self.pixpu*0.75))#18
         )
-        self.flipImages=lru_cache(8)(lambda N:pygame.transform.flip(self.Images[N],1,0))
+        self.flipImages=lru_cache(800)(lambda N:pygame.transform.flip(self.Images[N],1,0))
     def world2screen(self,x,y):
         return (
         ((x-self.centerX)*self.pixpu+self.screen.get_width()/2),
@@ -153,6 +154,14 @@ class Level:
                         contact.enabled = not B.hiton(A,contact.fixtureA.body)
                         return
                     if iA and iB:
+                        return
+                    if isinstance(A,ItemEntity) and B !="ground":
+                        A.onpickedup(B)
+                        contact.enabled = False
+                        return
+                    if isinstance(B,ItemEntity) and A !="ground":
+                        B.onpickedup(A)
+                        contact.enabled = False
                         return
                 if contact.fixtureA.userData is not None and contact.fixtureA.userData.get("oneway"):
                     if contact.fixtureB.userData is not None and isinstance(thatplayer:=contact.fixtureB.userData.get("role"),Humanoid) and (thatplayer.wannadown or 
@@ -319,6 +328,7 @@ class Level:
 INF=float("inf")
 NINF=-INF
 class Damageable:
+    notbeselected=False
     @property
     def eyepos(self):
         return self.getAABB().center
@@ -367,7 +377,7 @@ class Humanoid(Damageable):
         yield s.player_head
     inventory:list
     def pickup(s,i):
-        s.inventory.append(i)
+        s.inventory.insert(0,i)
         return True
     def knockback(self,vec:b2Vec2,size,part=None):
         if part is None:part=self.player_foot
@@ -581,11 +591,13 @@ class Slime(NPC):
 
 
 class Item:
+    imageid=-999
     @contextmanager
     def ifhave(self,user):
         yield
 
 class FastShoes(Item):
+    imageid=17
     def __init__(self,k) -> None:
         super().__init__()
         self.k=k
@@ -610,6 +622,7 @@ class nWeapon(Weapon):#attack everything
             i.knockback(i.eyepos-user.eyepos,20)
 
 class Shooter(Weapon):
+    imageid=18
     def canbeused(self, user):
         return True
     def onuse(self, user,usepos,usedir):
@@ -646,6 +659,9 @@ class Projectile(Damageable):
     def onremove(self):
         self.world.DestroyBody(self.body)
 class ItemEntity(Damageable):
+    def bodies(s):
+        yield s.body
+    notbeselected=True
     @contextmanager
     def tick(s):
         yield
@@ -656,19 +672,27 @@ class ItemEntity(Damageable):
         self.body=self.world.CreateDynamicBody(
             fixedRotation = True,
             fixtures=b2FixtureDef(userData={"role":self,"team":self.team},friction=0,
-                shape=b2PolygonShape(box=(0.4,0.4)),
+                shape=b2PolygonShape(box=(0.375,0.375)),
                 isSensor=False),
             bullet=False,
             position=(0.5+Xinit, 0.5+Yinit))
     def onremove(self):
         self.removed=self.died=True
-        if self.body is None:
+        if self.body is not None:
             self.world.DestroyBody(self.body)
         self.body = None
     def onpickedup(self,other):
         if self.died:return
+        if self.team is not None:
+            if self.team is not other.team:
+                return
         if other.pickup(self.item):
             self.onkilled()
+    def draw(self, surface, zoom_func, zoom):
+        if self.item.imageid < 0:return
+        aabb=self.getAABB()#self.player_foot.fixtures[0].GetAABB(0)
+        zom=zoom_func(aabb.lowerBound[0],aabb.upperBound[1])
+        surface.blit(self.world.world.gloop.Images[self.item.imageid],zom)
 
     
 Gloop().start()
