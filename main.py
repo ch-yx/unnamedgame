@@ -30,7 +30,7 @@ class Gloop:
                HH                       #
         ~~~~~~~H~~~~         O         J
         #      H    ~~~~~~~~~~~~~~~~~~J
-        #      H                     J
+        #      HW                    J
         #      H                    J
         ###    H             J###  J  
         ###&  J#L    ^  o   #    ##
@@ -65,6 +65,8 @@ class Gloop:
         ,pygame.transform.scale(image_loader('ladder_.png'),(self.pixpu,self.pixpu))
         ,pygame.transform.scale(image_loader('boots1.png'),(self.pixpu*0.75,self.pixpu*0.75))#17
         ,pygame.transform.scale(image_loader('shooter1.png'),(self.pixpu*0.75,self.pixpu*0.75))#18
+        ,pygame.transform.scale(image_loader('shield1.png'),(self.pixpu*0.75,self.pixpu*0.75))#19
+        ,pygame.transform.scale(image_loader('shield1_.png'),(self.pixpu*1.5/8,self.pixpu*1.5))#20
         )
         self.flipImages=lru_cache(800)(lambda N:pygame.transform.flip(self.Images[N],1,0))
     def world2screen(self,x,y):
@@ -142,6 +144,15 @@ class Level:
                     if contact.fixtureA.userData.get("role",None) is contact.fixtureB.userData.get("role",...):
                         contact.enabled = False
                         return
+                    iA=isinstance(A:=contact.fixtureA.userData.get("role",None),Shield)
+                    iB=isinstance(B:=contact.fixtureB.userData.get("role",None),Shield)
+                    if (iA or iB ) :
+                        if (contact.fixtureB.userData.get("team",None) is contact.fixtureA.userData.get("team",None)):
+                            contact.enabled = False
+                            return
+                        if (contact.fixtureA.userData.get("role",None) == "ground") or (contact.fixtureA.userData.get("role",None) == "ground"):
+                            contact.enabled = False
+                            return
                     iA=isinstance(A:=contact.fixtureA.userData.get("role",None),Projectile)
                     iB=isinstance(B:=contact.fixtureB.userData.get("role",None),Projectile)
                     if iA or iB:
@@ -217,8 +228,9 @@ class Level:
                 elif c == "i":
                     ItemEntity(self.world,Shooter(),j,-i)
                 elif c == "f":
-                    ItemEntity(self.world,FastShoes(3),j,-i)
-        
+                    ItemEntity(self.world,FastShoes(2),j,-i)
+                elif c == "W":
+                    ItemEntity(self.world,Shield(self.world),j,-i)
         
 
     @staticmethod
@@ -331,6 +343,12 @@ class Level:
 INF=float("inf")
 NINF=-INF
 class Damageable:
+    def shieldoffset(self):
+        return (0,0)
+    def supportingbody(self):
+        return next(self.bodies())
+    def itemholdingbody(self):
+        return next(self.bodies())
     @property
     def eyepos(self):
         return self.getAABB().center
@@ -374,6 +392,10 @@ class Damageable:
         return False
         
 class Humanoid(Damageable):
+    def shieldoffset(self):
+        return (self.facing,0)
+    def itemholdingbody(self):
+        return self.player_head
     def bodies(s):
         yield s.player_foot
         yield s.player_head
@@ -516,6 +538,7 @@ class Player(Humanoid):
     @contextmanager
     def tick(self,pressed):
         with ExitStack() as items:
+            self.inventory=[i for i in self.inventory if not i.usedup]
             for item in self.inventory:
                 items.enter_context(item.ifhave(self))
             if self.wannaattack:
@@ -596,10 +619,13 @@ class Slime(NPC):
 
 
 class Item:
+    usedup=False
     imageid=-999
     @contextmanager
     def ifhave(self,user):
         yield
+    def onpickup(self,user,pos):
+        pass
 
 class FastShoes(Item):
     imageid=17
@@ -691,6 +717,7 @@ class ItemEntity(Damageable):
             if self.team is not other.team:
                 return
         if other.pickup(self.item):
+            self.item.onpickup(other,self.body.worldCenter)
             self.onkilled()
     def draw(self, surface, zoom_func, zoom):
         if self.item.imageid < 0:return
@@ -698,5 +725,46 @@ class ItemEntity(Damageable):
         zom=zoom_func(aabb.lowerBound[0],aabb.upperBound[1])
         surface.blit(self.world.world.gloop.Images[self.item.imageid],zom)
 
-    
+class Shield(Item,Damageable):
+    body=None
+    imageid=19
+    @contextmanager
+    def tick(s):
+        yield
+    def onpickup(self,user,pos) -> None:
+        self.health=20
+        self.body=NotImplemented
+        self.pos=pos
+    def draw(self, surface, zoom_func, zoom):
+        if isinstance(self.body,b2Body):
+            aabb=self.getAABB((self.body,))#self.player_foot.fixtures[0].GetAABB(0)
+            zom=zoom_func(aabb.lowerBound[0],aabb.upperBound[1])
+            surface.blit(self.world.world.gloop.Images[20],zom)
+    @contextmanager
+    def ifhave(self,user):
+        if self.body is NotImplemented:
+            self.body=self.world.CreateDynamicBody(
+            fixedRotation=True,
+            fixtures=b2FixtureDef(userData={"role":self,"owner":user,"team":user.team},
+                shape=b2PolygonShape(box=(15/160,1.5/2)),
+                density=0.3),gravityScale=0,
+            bullet=False,
+            position=self.pos)
+        if self.health<=0 or self.body is None:
+            self.usedup=1
+            if self.body is not None:
+                self.world.DestroyBody(self.body)
+                self.body = None
+            yield;return
+
+        joint=self.world.CreateJoint(b2DistanceJointDef(
+            bodyA=self.body,
+            bodyB=user.itemholdingbody(),
+            localAnchorB=user.shieldoffset(),
+            localAnchorA=(0, 0),
+            length=0.1
+            ))
+        yield
+        self.world.DestroyJoint(joint)
+
 Gloop().start()
