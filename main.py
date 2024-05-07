@@ -5,6 +5,7 @@ from math import floor
 from collections import defaultdict
 from contextlib import contextmanager,ExitStack
 from functools import lru_cache
+from operator import itemgetter
 def debugprint(x):
     print(x)
     return x
@@ -25,7 +26,7 @@ class Gloop:
         ~~~~~~~~H~~~~~i                 #
                 H                       #
                HH                       #
-               HH                       #
+               HH            f          #
                HH                       #
         ~~~~~~~H~~~~         O         J
         #      H    ~~~~~~~~~~~~~~~~~~J
@@ -215,6 +216,8 @@ class Level:
                     self.place_a_ladder(self.world,j,-i)
                 elif c == "i":
                     ItemEntity(self.world,Shooter(),j,-i)
+                elif c == "f":
+                    ItemEntity(self.world,FastShoes(3),j,-i)
         
         
 
@@ -246,7 +249,7 @@ class Level:
             pressed=pygame.key.get_pressed()
             self.player.wannajump=pressed[pygame.K_w]
             self.player.wannadown=pressed[pygame.K_s]
-            Entityticks.enter_context(self.player.tick())
+            Entityticks.enter_context(self.player.tick(pressed))
             self.world.NPCs.extend(self.world.futureNPCs)
             self.world.futureNPCs.clear()
             _npcs=[]
@@ -258,7 +261,7 @@ class Level:
                 _npcs.append(i)
             self.world.NPCs[:]=_npcs
             #self.playermoving.localAnchorB=(34,56)
-            self.player.walk((pressed[pygame.K_d]-pressed[pygame.K_a]))
+            #self.player.walk((pressed[pygame.K_d]-pressed[pygame.K_a]))
             self.world.Step(1/60,10,10)
 
         
@@ -328,7 +331,6 @@ class Level:
 INF=float("inf")
 NINF=-INF
 class Damageable:
-    notbeselected=False
     @property
     def eyepos(self):
         return self.getAABB().center
@@ -410,7 +412,7 @@ class Humanoid(Damageable):
     def __init__(self,world:b2World,playerXinit,playerYinit) -> None:
         super().__init__(world)
         self.health=self.maxHealth
-        self.inventory=[FastShoes(3),FastShoes(1),nWeapon()]
+        self.inventory=[]
         self.player_foot=player_foot=self.world.CreateDynamicBody(
             fixtures=b2FixtureDef(userData={"role":self,"half":"down","team":self.team},friction=10,
                 shape=b2CircleShape(radius=self.buttomsize),
@@ -502,6 +504,7 @@ class Humanoid(Damageable):
 TEAM_A="A"
 TEAM_B="B"
 class Player(Humanoid):
+    keysetting=itemgetter(pygame.K_w,pygame.K_s,pygame.K_a,pygame.K_d)
     team=TEAM_A
     isPlayer=True
     wannaattack=False
@@ -511,7 +514,7 @@ class Player(Humanoid):
         return (floor(x),floor(y)) in self.world.ladders
     isflying=False
     @contextmanager
-    def tick(self):
+    def tick(self,pressed):
         with ExitStack() as items:
             for item in self.inventory:
                 items.enter_context(item.ifhave(self))
@@ -523,16 +526,18 @@ class Player(Humanoid):
                         item.onuse(self,self.eyepos,(self.facing,0))
                         break
             if not (self.isflying or self.inladder):
-                yield self.jump() if self.wannajump else self.unjump()
+                yield self.jump() if self.wannajump else (self.unjump(),self.walk((pressed[pygame.K_d]-pressed[pygame.K_a]))
+)
                 self.clean()
             else:
                 olda,oldb=self.player_head.gravityScale,self.player_foot.gravityScale
                 self.player_head.gravityScale=self.player_foot.gravityScale=0
-                pressed=pygame.key.get_pressed()
+                
                 nowspeed=self.player_foot.linearVelocity
                 targetspeed=2*b2Vec2(pressed[pygame.K_d]-pressed[pygame.K_a],self.wannajump-self.wannadown)
                 self.player_foot.ApplyForce(5*(targetspeed-nowspeed),self.player_foot.worldCenter,True)
-                yield self.unjump()
+                yield (self.unjump(), self.walk((pressed[pygame.K_d]-pressed[pygame.K_a]))
+)
                 self.player_head.gravityScale,self.player_foot.gravityScale=olda,oldb
                 self.clean()
                 
@@ -661,7 +666,6 @@ class Projectile(Damageable):
 class ItemEntity(Damageable):
     def bodies(s):
         yield s.body
-    notbeselected=True
     @contextmanager
     def tick(s):
         yield
