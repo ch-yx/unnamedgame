@@ -20,16 +20,20 @@ class Gloop:
         self.clock = pygame.time.Clock()
         self.running = True
         self.world=Level(self, wmap="""
-        
-        
-                H                       #
-        ~~~~~~~~H~~~~~i                 #
-                H                       #
-               HH                       #
-               HH            f          #
-               HH                       #
-        ~~~~~~~H~~~~         O         J
-        #      H    ~~~~~~~~~~~~~~~~~~J
+      ###################################
+      #                                 #
+      #                                 #
+      #                 ~~~~~~~~~       #
+      #                 ~~~~~~~~~       #
+      #                 ~~~~~~~~~       #
+      #         H       ~~~~~~~~~       #
+      # ~~~~~~~~H~~~~~i ~~~~~~~~~       #
+      #         H                       #
+      #        HH                       #
+       #       HH            f          #
+       #       HH                       #
+       #~~~~~~~H~~~~         O         J
+       ##      H    ~~~~~~~~~~~~~~~~~~J
         #      HW                    J
         #      H                    J
         ###    H             J###  J  
@@ -67,6 +71,10 @@ class Gloop:
         ,pygame.transform.scale(image_loader('shooter1.png'),(self.pixpu*0.75,self.pixpu*0.75))#18
         ,pygame.transform.scale(image_loader('shield1.png'),(self.pixpu*0.75,self.pixpu*0.75))#19
         ,pygame.transform.scale(image_loader('shield1_.png'),(self.pixpu*1.5/8,self.pixpu*1.5))#20
+        ,pygame.transform.scale(image_loader('playerbody_.png'),(self.pixpu,self.pixpu*2))#21
+        ,pygame.transform.scale(image_loader('playerfoot1_.png'),(self.pixpu,self.pixpu*2))#22
+        ,pygame.transform.scale(image_loader('playerfoot2_.png'),(self.pixpu,self.pixpu*2))#23
+        ,pygame.transform.scale(image_loader('playerhand1_.png'),(self.pixpu,self.pixpu*2))#24
         )
         self.flipImages=lru_cache(800)(lambda N:pygame.transform.flip(self.Images[N],1,0))
     def world2screen(self,x,y):
@@ -216,7 +224,7 @@ class Level:
                 elif c == "O":
                     Slime(self.world,j,-i).slimecolor=1
                 elif c == "&":
-                    NPC(self.world,j,-i)
+                    SlimeZombie(self.world,j,-i)
                 elif c == "J":
                     self.place_a_J_block(self.world,j,-i)
                 elif c == "L":
@@ -256,7 +264,11 @@ class Level:
     @staticmethod
     def place_a_ladder(world,x,y):
         world.ladders.add((x,y))
+    thingstodo=[]
     def tick(self):
+        for i in self.thingstodo:
+            i()
+        self.thingstodo.clear()
         with ExitStack() as Entityticks:
             pressed=pygame.key.get_pressed()
             self.player.wannajump=pressed[pygame.K_w]
@@ -392,6 +404,7 @@ class Damageable:
         return False
         
 class Humanoid(Damageable):
+    imageofs=0
     def shieldoffset(self):
         return (self.facing,0)
     def itemholdingbody(self):
@@ -515,14 +528,15 @@ class Humanoid(Damageable):
         # Y=self.player_head.fixtures[0].GetAABB(0).upperBound[1]
         # x=self.player_foot.fixtures[0].GetAABB(0).lowerBound[0]
         # y=self.player_foot.fixtures[0].GetAABB(0).upperBound[1]
+        ofs=self.imageofs
         if self.facing==1:
-            surface.blit(self.world.world.gloop.Images[6+round(self.player_foot.angle)%2],zoom_func(x,y+1) )
-            surface.blit(self.world.world.gloop.Images[5],zoom_func(X,Y) )
-            surface.blit(self.world.world.gloop.Images[8],zoom_func(x,Y) )
+            surface.blit(self.world.world.gloop.Images[ofs+6+round(self.player_foot.angle)%2],zoom_func(x,y+1) )
+            surface.blit(self.world.world.gloop.Images[ofs+5],zoom_func(X,Y) )
+            surface.blit(self.world.world.gloop.Images[ofs+8],zoom_func(x,Y) )
         else:
-            surface.blit(self.world.world.gloop.flipImages(6+round(self.player_foot.angle)%2),zoom_func(x,y+1) )
-            surface.blit(self.world.world.gloop.flipImages(5),zoom_func(X,Y) )
-            surface.blit(self.world.world.gloop.flipImages(8),zoom_func(x,Y) )
+            surface.blit(self.world.world.gloop.flipImages(ofs+6+round(self.player_foot.angle)%2),zoom_func(x,y+1) )
+            surface.blit(self.world.world.gloop.flipImages(ofs+5),zoom_func(X,Y) )
+            surface.blit(self.world.world.gloop.flipImages(ofs+8),zoom_func(x,Y) )
 TEAM_A="A"
 TEAM_B="B"
 class Player(Humanoid):
@@ -581,6 +595,13 @@ class NPC(Humanoid):
         else:
             yield self.jump()
         self.clean()
+class SlimeZombie(NPC):
+    imageofs=16
+    def onkilled(self):
+        self.world.world.thingstodo.extend([
+        lambda:Slime(self.world,self.eyepos[0]-0.5,self.eyepos[1]-0.5),
+        lambda:Slime(self.world,self.eyepos[0]-0.5,self.eyepos[1]-1.5)])
+        return super().onkilled()
 class Slime(NPC):
     isSlime=True
     buttomsize=0.5
