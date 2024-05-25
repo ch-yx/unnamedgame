@@ -29,14 +29,14 @@ class Gloop:
       #                 ~~~~~~~~~       #
       #                 ~~~~~~~~~       #
       #         H       ~~~~~~~~~       #
-      # ~~~~~~~~H~~~~~i ~~~~~~~~~       #
+      # ~~~~~~~~H~~~~~W ~~~~~~~~~       #
       #         H                       #
       #        HH                       #
        #       HH            f          #
        #       HH                       #
        #~~~~~~~H~~~~         O         J
        ##      H    ~~~~~~~~~~~~~~~~~~J
-        #      HW                    J
+        #      Hi                    J
         #      H                    J
         ###    H             J###  J  
         ###&  J#L    ^  o   #    ##
@@ -338,9 +338,10 @@ class Level:
         for npc in self.world.NPCs:
             npc.draw(surface,zoom_func,zoom)
         self.world.world.player.draw(surface,zoom_func,zoom)
+        
+        surface.blits((s,zoom_func(x*CACHE_SIZE,y*CACHE_SIZE+CACHE_SIZE)) for (x,y),s in self.gloop.mapscreencache.items())
         for p in (self.particles):
             p.draw(surface,zoom_func,zoom)
-        surface.blits((s,zoom_func(x*CACHE_SIZE,y*CACHE_SIZE+CACHE_SIZE)) for (x,y),s in self.gloop.mapscreencache.items())
         # for x,y in self.world.normalBlocks:
         #     surface.blit(self.gloop.Images[not(hash(x*0.3+0.01*y+0.1)%10)],zoom_func(x,y+1))
         # for x,y in self.world.LBlocks:
@@ -817,10 +818,17 @@ class particlesA(particles):
     lifetime:int
     seed:float=field(default_factory=random.random)
     lifemax=60
+    
     def draw(self, surface, zoom_func, zoom):
-        random.seed(self.seed)
-        for _ in range(300):
-            alpha=(2*self.lifemax-self.lifetime)/self.lifemax
-            dir1=b2Vec2(random.normalvariate(0,1),random.normalvariate(0,1))*self.lifetime*alpha*0.4+self.pos
-            pygame.draw.circle(surface,(255,255,255,alpha),zoom_func(*dir1),zoom*0.1)
+        radius=zoom*0.05
+        sub_surface = pygame.Surface((radius * 2, radius * 2))
+        sub_surface.fill((128,128,128))
+        with randomstate(self.seed):
+            for _ in range(150):
+                alpha=(2*self.lifemax-self.lifetime)/self.lifemax
+                dir1=b2Vec2(random.normalvariate(0,0.3),random.normalvariate(0,0.3))*self.lifetime*alpha*0.1+self.pos
+                sub_surface.set_alpha((alpha-1)*207)
+                x,y=zoom_func(*dir1)
+                surface.blit(sub_surface, (x - radius, y - radius),special_flags=pygame. BLEND_ALPHA_SDL2)
+                #pygame.draw.circle(surface,(255,255,255,int(alpha*127)),zoom_func(*dir1),zoom*0.1)
 Gloop().start()
