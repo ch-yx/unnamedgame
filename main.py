@@ -1,4 +1,6 @@
 
+from dataclasses import dataclass, field
+import random
 from Box2D import *
 import pygame
 from math import floor
@@ -269,6 +271,10 @@ class Level:
         for i in self.thingstodo:
             i()
         self.thingstodo.clear()
+        for p in tuple(self.particles):
+            p.lifetime+=1
+            if p.lifetime > p.lifemax:
+                self.particles.remove(p)
         with ExitStack() as Entityticks:
             pressed=pygame.key.get_pressed()
             self.player.wannajump=pressed[pygame.K_w]
@@ -294,6 +300,7 @@ class Level:
             #self.player_head.ApplyForce(100*(self.player_foot.position-self.player_head.position),(0,0),True)
         
             
+    particles={*()}
     def draw(self,surface,zoom_func,zoom):
         if not self.gloop.mapscreencache:
             for x,y in self.world.normalBlocks:
@@ -331,6 +338,8 @@ class Level:
         for npc in self.world.NPCs:
             npc.draw(surface,zoom_func,zoom)
         self.world.world.player.draw(surface,zoom_func,zoom)
+        for p in (self.particles):
+            p.draw(surface,zoom_func,zoom)
         surface.blits((s,zoom_func(x*CACHE_SIZE,y*CACHE_SIZE+CACHE_SIZE)) for (x,y),s in self.gloop.mapscreencache.items())
         # for x,y in self.world.normalBlocks:
         #     surface.blit(self.gloop.Images[not(hash(x*0.3+0.01*y+0.1)%10)],zoom_func(x,y+1))
@@ -707,6 +716,9 @@ class Projectile(Damageable):
             self.owner.attack(other,3,0b0)
             other.knockback(other.eyepos-self.owner.eyepos,20,part)
         self.onkilled()
+        fixture=self.body.fixtures[0]
+        trans=self.body.transform
+        self.world.world.particles.add(particlesA((trans*fixture.shape.pos),0))
         return True
     def onremove(self):
         self.world.DestroyBody(self.body)
@@ -788,4 +800,27 @@ class Shield(Item,Damageable):
         yield
         self.world.DestroyJoint(joint)
 
+@contextmanager
+def randomstate(i):
+    state=random.getstate()
+    random.seed(i)
+    yield
+    random.setstate(state)
+class particles:
+    def draw(self):
+        pass
+
+        
+@dataclass(eq=0)
+class particlesA(particles):
+    pos:tuple
+    lifetime:int
+    seed:float=field(default_factory=random.random)
+    lifemax=60
+    def draw(self, surface, zoom_func, zoom):
+        random.seed(self.seed)
+        for _ in range(300):
+            alpha=(2*self.lifemax-self.lifetime)/self.lifemax
+            dir1=b2Vec2(random.normalvariate(0,1),random.normalvariate(0,1))*self.lifetime*alpha*0.4+self.pos
+            pygame.draw.circle(surface,(255,255,255,alpha),zoom_func(*dir1),zoom*0.1)
 Gloop().start()
